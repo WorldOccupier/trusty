@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/WorldOccupier/trusty/internal/config"
@@ -16,15 +17,18 @@ import (
 )
 
 var (
-	cfgFile   string
-	outputFmt string
-	minScore  int
-	from      string
-	to        string
-	base      string
-	head      string
-	staged    bool
-	verbose   bool
+	cfgFile         string
+	outputFmt       string
+	minScore        int
+	minSeverity     string
+	fuzzIterations  int
+	from            string
+	to              string
+	base            string
+	head            string
+	staged          bool
+	verbose         bool
+	fuzzDir         string
 )
 
 func main() {
@@ -133,6 +137,7 @@ Examples:
 	securityCmd.Flags().BoolVarP(&staged, "staged", "s", false, "Scan staged changes only")
 	securityCmd.Flags().StringVar(&from, "from", "", "Start commit")
 	securityCmd.Flags().StringVar(&to, "to", "", "End commit")
+	securityCmd.Flags().StringVar(&minSeverity, "min-severity", "", "Minimum severity (error, warning, info)")
 
 	logicCmd := &cobra.Command{
 		Use:   "logic",
@@ -154,6 +159,7 @@ Examples:
 	logicCmd.Flags().BoolVarP(&staged, "staged", "s", false, "Scan staged changes only")
 	logicCmd.Flags().StringVar(&from, "from", "", "Start commit")
 	logicCmd.Flags().StringVar(&to, "to", "", "End commit")
+	logicCmd.Flags().StringVar(&minSeverity, "min-severity", "", "Minimum severity (error, warning, info)")
 
 	testgenCmd := &cobra.Command{
 		Use:   "testgen",
@@ -170,6 +176,39 @@ Examples:
 	testgenCmd.Flags().BoolVarP(&staged, "staged", "s", false, "Scan staged changes only")
 	testgenCmd.Flags().StringVar(&from, "from", "", "Start commit")
 	testgenCmd.Flags().StringVar(&to, "to", "", "End commit")
+	testgenCmd.Flags().StringVar(&fuzzDir, "fuzz-dir", ".", "Directory to scan for functions (fuzz mode)")
+
+	fuzzCmd := &cobra.Command{
+		Use:   "fuzz",
+		Short: "Property-based fuzz testing for exported Go functions",
+		Long: `Generate random inputs for exported Go functions and verify they don't panic.
+Analyzes function signatures and generates type-appropriate random test values.
+
+Examples:
+  trusty fuzz                         # Fuzz all changed Go files
+  trusty fuzz --staged                # Fuzz staged changes
+  trusty fuzz --dir ./internal/scanner # Fuzz specific directory
+  trusty fuzz --iterations 1000       # Set iterations per function`,
+		RunE: runFuzz,
+	}
+	fuzzCmd.Flags().BoolVarP(&staged, "staged", "s", false, "Scan staged changes only")
+	fuzzCmd.Flags().StringVar(&from, "from", "", "Start commit")
+	fuzzCmd.Flags().StringVar(&to, "to", "", "End commit")
+	fuzzCmd.Flags().StringVar(&fuzzDir, "dir", ".", "Directory containing Go files to fuzz")
+	fuzzCmd.Flags().IntVar(&fuzzIterations, "iterations", 100, "Number of fuzz iterations per function")
+
+	watchCmd := &cobra.Command{
+		Use:   "watch",
+		Short: "Watch files and auto-scan on changes",
+		Long: `Watch Go source files for changes and automatically re-run scans.
+Uses fsnotify to detect file modifications with debouncing.
+
+Examples:
+  trusty watch                          # Watch current directory
+  trusty watch ./internal/scanner       # Watch specific directory
+  trusty watch ./pkg/... ./cmd/...      # Watch multiple directories`,
+		RunE: runWatch,
+	}
 
 	root.AddCommand(scanCmd)
 	root.AddCommand(halluCmd)
@@ -177,6 +216,8 @@ Examples:
 	root.AddCommand(securityCmd)
 	root.AddCommand(logicCmd)
 	root.AddCommand(testgenCmd)
+	root.AddCommand(fuzzCmd)
+	root.AddCommand(watchCmd)
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -185,6 +226,11 @@ Examples:
 }
 
 func runSecurity(cmd *cobra.Command, args []string) error {
+	cfg, err := loadConfig()
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+
 	diffOpts := types.DiffOptions{
 		Staged: staged,
 		From:   from,
@@ -198,6 +244,14 @@ func runSecurity(cmd *cobra.Command, args []string) error {
 
 	sec := scanner.NewSecurityScanner()
 	findings := sec.Scan(files)
+
+	minSev := severityFromConfig(cfg.Rules.Security.Severity)
+	if minSeverity != "" {
+		if s := severityFromString(minSeverity); s > minSev {
+			minSev = s
+		}
+	}
+	findings = filterBySeverity(findings, minSev)
 
 	output := map[string]interface{}{
 		"findings":      findings,
@@ -229,6 +283,11 @@ func runSecurity(cmd *cobra.Command, args []string) error {
 }
 
 func runLogic(cmd *cobra.Command, args []string) error {
+	cfg, err := loadConfig()
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+
 	diffOpts := types.DiffOptions{
 		Staged: staged,
 		From:   from,
@@ -242,6 +301,14 @@ func runLogic(cmd *cobra.Command, args []string) error {
 
 	ld := scanner.NewLogicDetector()
 	findings := ld.Detect(files)
+
+	minSev := severityFromConfig(cfg.Rules.LogicErrors.Severity)
+	if minSeverity != "" {
+		if s := severityFromString(minSeverity); s > minSev {
+			minSev = s
+		}
+	}
+	findings = filterBySeverity(findings, minSev)
 
 	output := map[string]interface{}{
 		"findings":      findings,
@@ -274,7 +341,102 @@ func severityStr(s types.Severity) string {
 	}
 }
 
+func severityFromString(s string) types.Severity {
+	switch s {
+	case "error":
+		return types.SeverityError
+	case "warning", "warn":
+		return types.SeverityWarning
+	case "info":
+		return types.SeverityInfo
+	default:
+		return types.SeverityInfo
+	}
+}
+
+func severityFromConfig(s string) types.Severity {
+	return severityFromString(s)
+}
+
+func filterBySeverity(findings []types.Finding, minSev types.Severity) []types.Finding {
+	if minSev <= types.SeverityInfo {
+		return findings
+	}
+	var filtered []types.Finding
+	for _, f := range findings {
+		if f.Severity >= minSev {
+			filtered = append(filtered, f)
+		}
+	}
+	return filtered
+}
+
+func runFuzz(cmd *cobra.Command, args []string) error {
+	_, err := loadConfig()
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+
+	var files []types.DiffFile
+
+	if cmd.Flags().Changed("dir") || (!staged && from == "" && to == "") {
+		goFiles, err := filepath.Glob(filepath.Join(fuzzDir, "*.go"))
+		if err != nil || len(goFiles) == 0 {
+			fmt.Println(`{"functions":[],"total":0,"files_scanned":0,"errors":0}`)
+			return nil
+		}
+		for _, gf := range goFiles {
+			if strings.HasSuffix(gf, "_test.go") || strings.HasSuffix(gf, "_fuzz_test.go") {
+				continue
+			}
+			data, err := os.ReadFile(filepath.Clean(gf))
+			if err != nil {
+				continue
+			}
+			files = append(files, types.DiffFile{
+				Path:     gf,
+				Language: "go",
+				Content:  string(data),
+			})
+		}
+	} else {
+		diffOpts := types.DiffOptions{
+			Staged: staged,
+			From:   from,
+			To:     to,
+		}
+		files, err = scanner.GetDiff(diffOpts)
+		if err != nil {
+			return fmt.Errorf("getting diff: %w", err)
+		}
+	}
+
+	if fuzzIterations <= 0 {
+		fuzzIterations = 100
+	}
+
+	fuzzer := scanner.NewFuzzEngine(fuzzIterations)
+	output := fuzzer.Fuzz(files)
+	defer fuzzer.Cleanup(files)
+
+	fuzzer.RunTests(files)
+
+	data, _ := json.MarshalIndent(output, "", "  ")
+	fmt.Println(string(data))
+
+	if output.Errors > 0 {
+		os.Exit(1)
+	}
+
+	return nil
+}
+
 func runTestGen(cmd *cobra.Command, args []string) error {
+	_, err := loadConfig()
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+
 	diffOpts := types.DiffOptions{
 		Staged: staged,
 		From:   from,
@@ -473,6 +635,15 @@ func runReport(cmd *cobra.Command, args []string) error {
 		if err := report.WriteSARIF(f, &scanResult); err != nil {
 			return fmt.Errorf("writing SARIF: %w", err)
 		}
+	case "html":
+		outFile = "trusty-report.html"
+		data, err := report.FormatHTML(scanResult)
+		if err != nil {
+			return fmt.Errorf("formatting HTML: %w", err)
+		}
+		if err := os.WriteFile(filepath.Clean(outFile), []byte(data), 0644); err != nil {
+			return fmt.Errorf("writing HTML report: %w", err)
+		}
 	default:
 		data, err := report.FormatJSON(scanResult)
 		if err != nil {
@@ -485,4 +656,32 @@ func runReport(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("Report written to %s (trust score: %d/100)\n", outFile, result.TrustScore)
 	return nil
+}
+
+func runWatch(cmd *cobra.Command, args []string) error {
+	cfg, err := loadConfig()
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+
+	var llmProvider llm.Provider
+	if cfg.LLM.APIKey != "" {
+		llmCfg := llm.ProviderConfig{
+			Model:       cfg.LLM.Model,
+			Temperature: cfg.LLM.Temperature,
+			APIKey:      cfg.LLM.APIKey,
+			BaseURL:     cfg.LLM.BaseURL,
+		}
+		llmProvider = llm.NewProvider(cfg.LLM.Provider, llmCfg)
+	}
+
+	s := scanner.NewScanner(cfg, llmProvider)
+
+	dirs := args
+	w := scanner.NewWatcher(cfg, s, dirs)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	return w.Watch(ctx)
 }

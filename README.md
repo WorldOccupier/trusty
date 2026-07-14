@@ -34,27 +34,28 @@ trusty scan --format sarif --min-score 80
 
 ### Phase 2 — Semantic Analysis (In Progress)
 
-- [ ] **Security vulnerability scan** — Detect SQL injection, XSS, hardcoded secrets, insecure crypto, missing input validation
-- [ ] **Logic error detection** — Detect off-by-one errors, wrong variable usage, inverted conditionals, missing edge cases
-- [ ] **Test contract generation** — Auto-generate behavioral property-based tests from function signatures and code analysis; run them automatically
+- [x] **Security vulnerability scan** — Detect SQL injection, XSS, hardcoded secrets, insecure crypto, missing input validation
+- [x] **Logic error detection** — Detect off-by-one errors, wrong variable usage, inverted conditionals, missing edge cases
+- [x] **Test contract generation** — Auto-generate behavioral property-based tests from function signatures and code analysis
+- [x] **Fuzz testing** — Property-based fuzz testing with random input generation for exported Go functions
 - [ ] **Intent extraction** — Parse PR descriptions, commit messages, and code context to extract intended behavior, then verify code matches intent
 
 ### Phase 3 — Integration & UX
 
-- [ ] **GitHub Actions integration** — Composite action that gates PR merges based on trust score
+- [x] **GitHub Actions integration** — Composite action that gates PR merges based on trust score
+- [x] **HTML report** — Beautiful, shareable HTML report with score bar and per-file findings
+- [x] **Watch mode** — `trusty watch` — auto-scan on file change with fsnotify
 - [ ] **GitLab CI integration** — Merge request decoration with findings
 - [ ] **GitHub PR commenting** — Auto-comment on PRs with per-file findings and suggestions
 - [ ] **TUI mode** — Interactive terminal UI (Bubble Tea) for browsing findings, applying fixes, and exploring scan results
 - [ ] **VS Code extension** — Inline diagnostics via LSP protocol
-- [ ] **HTML report** — Beautiful, shareable report with trend charts and team-level stats
-- [ ] **Watch mode** — `trusty watch` — auto-scan on file change
 
 ### Phase 4 — Advanced
 
 - [ ] **AI-code fingerprinting** — Statistical detection of AI-generated code patterns
 - [ ] **Regression tracking** — Track trust scores across commits/branches; alert when score drops
 - [ ] **Team policies** — Organization-wide `.trusty.yml` with enforced rules, minimum scores per repo/team
-- [ ] **Multi-model LLM** — OpenAI, Anthropic Claude, local Ollama, OpenRouter, self-hosted vLLM
+- [x] **Multi-model LLM** — OpenAI, Anthropic Claude, local Ollama
 - [ ] **Incremental cache** — Skip re-analysis of unchanged files; 10x speedup
 - [ ] **Distributed scan** — Parallel scanning across packages/microservices
 - [ ] **Plugin system** — Lua or Go plugin API for custom checkers
@@ -130,7 +131,7 @@ rules:
     severity: error
 
 output:
-  format: json            # json, sarif, pretty
+  format: json            # json, sarif, html
   ci_mode: false
 ```
 
@@ -171,11 +172,14 @@ trusty hallu --from HEAD~1 --to HEAD
 ### `trusty report`
 
 ```bash
-# Generate SARIF report
+# Generate SARIF report (GitHub Advanced Security)
 trusty report --format sarif --min-score 80
 
 # Generate JSON report
 trusty report --format json --output results.json
+
+# Generate HTML report (self-contained, dark theme)
+trusty report --format html
 
 # Scan and report with threshold
 trusty report --staged --min-score 70
@@ -220,6 +224,35 @@ trusty testgen --run
 trusty testgen --output ./tests
 ```
 
+### `trusty fuzz`
+
+```bash
+# Fuzz all changed Go files
+trusty fuzz
+
+# Fuzz staged changes
+trusty fuzz --staged
+
+# Fuzz a specific directory
+trusty fuzz --dir ./internal/scanner
+
+# Set iterations per function
+trusty fuzz --iterations 1000
+```
+
+### `trusty watch`
+
+```bash
+# Watch current directory and auto-scan on changes
+trusty watch
+
+# Watch a specific directory
+trusty watch ./internal/scanner
+
+# Watch multiple directories
+trusty watch ./pkg/... ./cmd/...
+```
+
 ## Architecture
 
 ```
@@ -234,18 +267,22 @@ trusty/
 │   │   ├── verify.go               # Tier 3: Behavioral verification
 │   │   ├── security.go             # Security vulnerability scanner
 │   │   ├── logic.go                # Logic error detection
-│   │   └── testgen.go              # Test contract generation
+│   │   ├── testgen.go              # Test contract generation
+│   │   ├── fuzz.go                 # Property-based fuzz testing
+│   │   └── watch.go                # Fsnotify file watcher
 │   ├── hallucination/              # Hallucination detection
 │   │   ├── detector.go             # Detection logic
 │   │   └── registry.go             # Package registry client
 │   ├── report/                     # Output formatting
-│   │   ├── json.go
-│   │   ├── sarif.go
+│   │   ├── json.go                 # JSON output
+│   │   ├── sarif.go                # SARIF v2.1.0 output
+│   │   ├── html.go                 # HTML report generation
 │   │   └── score.go                # Trust score models
 │   ├── config/                     # .trusty.yml parsing
 │   └── llm/                        # LLM provider abstraction
-│       ├── provider.go             # Interface
-│       ├── openai.go
+│       ├── provider.go             # Interface + factory
+│       ├── openai.go               # OpenAI GPT-4o
+│       ├── anthropic.go            # Anthropic Claude
 │       └── ollama.go               # Local inference
 ├── .github/actions/trusty/         # GitHub Action
 ├── go.mod

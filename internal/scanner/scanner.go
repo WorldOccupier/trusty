@@ -18,6 +18,8 @@ type Scanner struct {
 	hallu    *hallucination.Detector
 	semantic *SemanticAnalyzer
 	verify   *VerificationEngine
+	security *SecurityScanner
+	logic    *LogicDetector
 }
 
 func NewScanner(cfg *config.Config, llmProvider llm.Provider) *Scanner {
@@ -27,6 +29,8 @@ func NewScanner(cfg *config.Config, llmProvider llm.Provider) *Scanner {
 		hallu:    hallucination.NewDetector(),
 		semantic: NewSemanticAnalyzer(llmProvider),
 		verify:   NewVerificationEngine(),
+		security: NewSecurityScanner(),
+		logic:    NewLogicDetector(),
 	}
 }
 
@@ -76,6 +80,16 @@ func (s *Scanner) Scan(ctx context.Context, opts types.DiffOptions) (*types.Scan
 				if s.hallu != nil {
 					halluFindings := s.hallu.Detect(f.Path, f.Content, f.Diff)
 					findings = append(findings, halluFindings...)
+				}
+
+				if s.security != nil {
+					secFindings := s.security.Scan([]types.DiffFile{f})
+					findings = append(findings, secFindings...)
+				}
+
+				if s.logic != nil {
+					logicFindings := s.logic.Detect([]types.DiffFile{f})
+					findings = append(findings, logicFindings...)
 				}
 			}
 

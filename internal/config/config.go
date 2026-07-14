@@ -86,7 +86,7 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
 
-	if os.Getenv("OPENAI_API_KEY") != "" {
+	if os.Getenv("OPENAI_API_KEY") != "" && cfg.LLM.Provider != "anthropic" {
 		cfg.LLM.APIKey = os.Getenv("OPENAI_API_KEY")
 	}
 	if os.Getenv("ANTHROPIC_API_KEY") != "" && cfg.LLM.Provider == "anthropic" {

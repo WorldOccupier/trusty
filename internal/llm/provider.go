@@ -51,6 +51,8 @@ func NewProvider(name string, cfg ProviderConfig) Provider {
 		return &OpenAIProvider{config: cfg}
 	case "ollama":
 		return &OllamaProvider{config: cfg}
+	case "anthropic":
+		return &AnthropicProvider{config: cfg}
 	default:
 		return &OpenAIProvider{config: cfg}
 	}
