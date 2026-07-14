@@ -1,25 +1,25 @@
-# TrustPilot — AI Code Verification CLI
+# Trusty — AI Code Verification CLI
 
 Bridge the trust gap in AI-generated code.
 
-AI coding assistants generate code that *looks* correct but contains subtle bugs, hallucinated APIs, logic errors, and security vulnerabilities. TrustPilot automatically verifies AI-generated code with a 3-tier engine: static analysis, LLM semantic analysis, and behavioral verification.
+AI coding assistants generate code that *looks* correct but contains subtle bugs, hallucinated APIs, logic errors, and security vulnerabilities. Trusty automatically verifies AI-generated code with a 3-tier engine: static analysis, LLM semantic analysis, and behavioral verification.
 
-**Only 29% of developers trust AI-generated code** (Stack Overflow 2025). TrustPilot gives teams the confidence to ship faster.
+**Only 29% of developers trust AI-generated code** (Stack Overflow 2025). Trusty gives teams the confidence to ship faster.
 
 ## Quick Start
 
 ```bash
-go install github.com/user/trustpilot/cmd/trustpilot@latest
+go install github.com/WorldOccupier/trusty/cmd/trusty@latest
 
 # Scan staged changes
-trustpilot scan
+trusty scan
 
 # Check for hallucinated imports
-trustpilot hallu
+trusty hallu
 
 # Scan with LLM analysis (requires API key)
 export OPENAI_API_KEY="sk-..."
-trustpilot scan --format sarif --min-score 80
+trusty scan --format sarif --min-score 80
 ```
 
 ## Features
@@ -29,16 +29,15 @@ trustpilot scan --format sarif --min-score 80
 - `scan` — Git diff analysis with 3-tier verification engine
 - `hallu` — AI hallucination detection (fake imports, non-existent APIs)
 - `report` — Structured output with SARIF, JSON, and trust scoring
-- Config file (`.trustpilot.yml`) with rules, severity, exclusions
+- Config file (`.trusty.yml`) with rules, severity, exclusions
 - Multi-language support (Go, Python, JavaScript/TypeScript)
 
-### Phase 2 — Semantic Analysis
+### Phase 2 — Semantic Analysis (In Progress)
 
-- [ ] **Intent extraction** — Parse PR descriptions, commit messages, and code context to extract intended behavior, then verify code matches intent
-- [ ] **Test contract generation** — Auto-generate behavioral property-based tests from function signatures and code analysis; run them automatically
-- [ ] **Logic error detection** — Detect off-by-one errors, wrong variable usage, inverted conditionals, missing edge cases
-- [ ] **Property-based verification** — Generate random inputs within type constraints and verify functions don't panic and return valid results
 - [ ] **Security vulnerability scan** — Detect SQL injection, XSS, hardcoded secrets, insecure crypto, missing input validation
+- [ ] **Logic error detection** — Detect off-by-one errors, wrong variable usage, inverted conditionals, missing edge cases
+- [ ] **Test contract generation** — Auto-generate behavioral property-based tests from function signatures and code analysis; run them automatically
+- [ ] **Intent extraction** — Parse PR descriptions, commit messages, and code context to extract intended behavior, then verify code matches intent
 
 ### Phase 3 — Integration & UX
 
@@ -48,13 +47,13 @@ trustpilot scan --format sarif --min-score 80
 - [ ] **TUI mode** — Interactive terminal UI (Bubble Tea) for browsing findings, applying fixes, and exploring scan results
 - [ ] **VS Code extension** — Inline diagnostics via LSP protocol
 - [ ] **HTML report** — Beautiful, shareable report with trend charts and team-level stats
-- [ ] **Watch mode** — `trustpilot watch` — auto-scan on file change
+- [ ] **Watch mode** — `trusty watch` — auto-scan on file change
 
 ### Phase 4 — Advanced
 
 - [ ] **AI-code fingerprinting** — Statistical detection of AI-generated code patterns
 - [ ] **Regression tracking** — Track trust scores across commits/branches; alert when score drops
-- [ ] **Team policies** — Organization-wide `.trustpilot.yml` with enforced rules, minimum scores per repo/team
+- [ ] **Team policies** — Organization-wide `.trusty.yml` with enforced rules, minimum scores per repo/team
 - [ ] **Multi-model LLM** — OpenAI, Anthropic Claude, local Ollama, OpenRouter, self-hosted vLLM
 - [ ] **Incremental cache** — Skip re-analysis of unchanged files; 10x speedup
 - [ ] **Distributed scan** — Parallel scanning across packages/microservices
@@ -95,7 +94,7 @@ Tier 3: Behavioral Verification (seconds-minutes)
 
 ## Trust Score
 
-TrustPilot calculates a quantitative **trust score** (0–100) for each scan:
+Trusty calculates a quantitative **trust score** (0–100) for each scan:
 
 | Score | Meaning | Action |
 |-------|---------|--------|
@@ -109,7 +108,7 @@ Score = 100 - (errors × 15 + warnings × 7 + infos × 3), min 0.
 ## Configuration
 
 ```yaml
-# .trustpilot.yml
+# .trusty.yml
 version: 1
 
 scan:
@@ -137,76 +136,118 @@ output:
 
 ## Commands
 
-### `trustpilot scan`
+### `trusty scan`
 
 ```bash
 # Scan staged changes (default)
-trustpilot scan
+trusty scan
 
 # Scan a specific commit range
-trustpilot scan --from HEAD~3 --to HEAD
+trusty scan --from HEAD~3 --to HEAD
 
 # Scan branch diff against base
-trustpilot scan --base main --head feature-branch
+trusty scan --base main --head feature-branch
 
 # Set minimum trust score (fails if below)
-trustpilot scan --min-score 80
+trusty scan --min-score 80
 
 # Output SARIF format (GitHub Advanced Security compatible)
-trustpilot scan --format sarif --min-score 80
+trusty scan --format sarif --min-score 80
 
 # Use custom config
-trustpilot scan --config .trustpilot.yml
+trusty scan --config .trusty.yml
 ```
 
-### `trustpilot hallu`
+### `trusty hallu`
 
 ```bash
 # Check staged changes for hallucinated imports
-trustpilot hallu
+trusty hallu
 
 # Check specific commits
-trustpilot hallu --from HEAD~1 --to HEAD
+trusty hallu --from HEAD~1 --to HEAD
 ```
 
-### `trustpilot report`
+### `trusty report`
 
 ```bash
 # Generate SARIF report
-trustpilot report --format sarif --min-score 80
+trusty report --format sarif --min-score 80
 
 # Generate JSON report
-trustpilot report --format json --output results.json
+trusty report --format json --output results.json
 
 # Scan and report with threshold
-trustpilot report --staged --min-score 70
+trusty report --staged --min-score 70
+```
+
+### `trusty security`
+
+```bash
+# Scan for security vulnerabilities in code changes
+trusty security
+
+# Scan with custom severity threshold
+trusty security --min-severity high
+
+# Check specific commits
+trusty security --from HEAD~1 --to HEAD
+```
+
+### `trusty logic`
+
+```bash
+# Detect logic errors in code changes
+trusty logic
+
+# Run logic analysis on specific commits
+trusty logic --from HEAD~3 --to HEAD
+
+# Output detailed findings
+trusty logic --verbose
+```
+
+### `trusty testgen`
+
+```bash
+# Generate behavioral tests for changed functions
+trusty testgen
+
+# Generate and run tests
+trusty testgen --run
+
+# Output tests to a specific directory
+trusty testgen --output ./tests
 ```
 
 ## Architecture
 
 ```
-trustpilot/
-├── cmd/trustpilot/main.go           # CLI entry point (cobra)
+trusty/
+├── cmd/trusty/main.go              # CLI entry point (cobra)
 ├── internal/
-│   ├── scanner/                     # Core 3-tier scan engine
-│   │   ├── scanner.go               # Orchestrator
-│   │   ├── diff.go                  # Git diff parsing
-│   │   ├── static.go                # Tier 1: AST analysis
-│   │   ├── semantic.go              # Tier 2: LLM-based analysis
-│   │   └── verify.go                # Tier 3: Behavioral verification
-│   ├── hallucination/               # Hallucination detection
-│   │   ├── detector.go              # Detection logic
-│   │   └── registry.go              # Package registry client
-│   ├── report/                      # Output formatting
+│   ├── scanner/                    # Core 3-tier scan engine
+│   │   ├── scanner.go              # Orchestrator
+│   │   ├── diff.go                 # Git diff parsing
+│   │   ├── static.go               # Tier 1: AST analysis
+│   │   ├── semantic.go             # Tier 2: LLM-based analysis
+│   │   ├── verify.go               # Tier 3: Behavioral verification
+│   │   ├── security.go             # Security vulnerability scanner
+│   │   ├── logic.go                # Logic error detection
+│   │   └── testgen.go              # Test contract generation
+│   ├── hallucination/              # Hallucination detection
+│   │   ├── detector.go             # Detection logic
+│   │   └── registry.go             # Package registry client
+│   ├── report/                     # Output formatting
 │   │   ├── json.go
 │   │   ├── sarif.go
-│   │   └── score.go                 # Trust score models
-│   ├── config/                      # .trustpilot.yml parsing
-│   └── llm/                         # LLM provider abstraction
-│       ├── provider.go              # Interface
+│   │   └── score.go                # Trust score models
+│   ├── config/                     # .trusty.yml parsing
+│   └── llm/                        # LLM provider abstraction
+│       ├── provider.go             # Interface
 │       ├── openai.go
-│       └── ollama.go                # Local inference
-├── .github/actions/trustpilot/      # GitHub Action
+│       └── ollama.go               # Local inference
+├── .github/actions/trusty/         # GitHub Action
 ├── go.mod
 └── README.md
 ```
@@ -216,8 +257,8 @@ trustpilot/
 ### GitHub Actions
 
 ```yaml
-# .github/workflows/trustpilot.yml
-name: TrustPilot Code Verification
+# .github/workflows/trusty.yml
+name: Trusty Code Verification
 on: [pull_request]
 
 jobs:
@@ -227,13 +268,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/trustpilot
+      - uses: ./.github/actions/trusty
         with:
           min-score: 70
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
 ```
 
-## Why TrustPilot?
+## Why Trusty?
 
 - **AI-generated code has 1.7x more issues** than human code (Stanford/MIT 2026)
 - **1.75x more logic errors**, **1.57x more security findings**
@@ -241,7 +282,7 @@ jobs:
 - **75% of tech leaders expect severe AI-code debt** by 2027
 - **$120M+ invested** in code verification (Qodo raised $70M Series B in 2026)
 
-The market is validated. The problem is painful. TrustPilot solves it — locally, openly, and precisely.
+The market is validated. The problem is painful. Trusty solves it — locally, openly, and precisely.
 
 ## License
 

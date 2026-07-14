@@ -1,6 +1,6 @@
-name: 'TrustPilot AI Code Verification'
+name: 'Trusty AI Code Verification'
 description: 'Verify AI-generated code with static analysis, semantic checks, and behavioral verification'
-author: 'TrustPilot'
+author: 'Trusty'
 
 inputs:
   min-score:
@@ -30,29 +30,29 @@ outputs:
 runs:
   using: 'composite'
   steps:
-    - name: Install TrustPilot
+    - name: Install Trusty
       shell: bash
       run: |
-        if ! command -v trustpilot &> /dev/null; then
-          echo "Installing TrustPilot..."
-          go install github.com/user/trustpilot/cmd/trustpilot@latest
+        if ! command -v trusty &> /dev/null; then
+          echo "Installing Trusty..."
+          go install github.com/WorldOccupier/trusty/cmd/trusty@latest
         fi
 
-    - name: Run TrustPilot Scan
+    - name: Run Trusty Scan
       id: scan
       shell: bash
       env:
         OPENAI_API_KEY: ${{ inputs.openai-api-key }}
       run: |
-        trustpilot scan \
+        trusty scan \
           --base origin/${{ github.base_ref }} \
           --head HEAD \
           --min-score ${{ inputs.min-score }} \
           --format ${{ inputs.format }} \
-          --config .trustpilot.yml \
-          > trustpilot-results.${{ inputs.format == 'sarif' && 'sarif' || 'json' }}
+          --config .trusty.yml \
+          > trusty-results.${{ inputs.format == 'sarif' && 'sarif' || 'json' }}
 
-        SCORE=$(trustpilot scan \
+        SCORE=$(trusty scan \
           --base origin/${{ github.base_ref }} \
           --head HEAD \
           --min-score ${{ inputs.min-score }} \
@@ -73,5 +73,5 @@ runs:
       if: inputs.format == 'sarif'
       uses: github/codeql-action/upload-sarif@v3
       with:
-        sarif_file: trustpilot-results.sarif
-        category: trustpilot
+        sarif_file: trusty-results.sarif
+        category: trusty

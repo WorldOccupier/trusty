@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/user/trustpilot/internal/types"
+	"github.com/WorldOccupier/trusty/internal/types"
 )
 
 type SARIFLog struct {
@@ -120,8 +120,8 @@ func WriteSARIF(w io.Writer, result *types.ScanResult) error {
 		Runs: []SARIFRun{{
 			Tool: SARIFTool{
 				Driver: SARIFDriver{
-					Name:           "TrustPilot",
-					InformationURI: "https://github.com/user/trustpilot",
+					Name:           "Trusty",
+					InformationURI: "https://github.com/WorldOccupier/trusty",
 					Rules:          ruleList,
 				},
 			},

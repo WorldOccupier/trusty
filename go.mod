@@ -1,4 +1,4 @@
-module github.com/user/trustpilot
+module github.com/WorldOccupier/trusty
 
 go 1.22
 

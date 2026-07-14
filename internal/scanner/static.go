@@ -6,7 +6,7 @@ import (
 	"go/token"
 	"strings"
 
-	"github.com/user/trustpilot/internal/types"
+	"github.com/WorldOccupier/trusty/internal/types"
 )
 
 type StaticAnalyzer struct{}

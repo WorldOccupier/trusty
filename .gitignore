@@ -4,15 +4,15 @@
 *.dll
 *.so
 *.dylib
-trustpilot
+/trusty
 
 # Test binary
 *.test
 
 # Output files
 *.out
-trustpilot-report.json
-trustpilot.sarif
+trusty-report.json
+trusty.sarif
 
 # IDE
 .idea/

@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/user/trustpilot/internal/types"
+	"github.com/WorldOccupier/trusty/internal/types"
 )
 
 type VerificationEngine struct{}

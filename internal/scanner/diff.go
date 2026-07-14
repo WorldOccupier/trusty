@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/user/trustpilot/internal/types"
+	"github.com/WorldOccupier/trusty/internal/types"
 )
 
 func isGitRepo() bool {

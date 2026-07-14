@@ -56,7 +56,7 @@ func (r *Registry) checkGoProxy(importPath string) bool {
 	if err != nil {
 		return true
 	}
-	req.Header.Set("User-Agent", "TrustPilot/1.0")
+	req.Header.Set("User-Agent", "Trusty/1.0")
 
 	resp, err := r.client.Do(req)
 	if err != nil {

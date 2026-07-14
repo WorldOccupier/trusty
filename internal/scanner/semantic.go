@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/user/trustpilot/internal/llm"
-	"github.com/user/trustpilot/internal/types"
+	"github.com/WorldOccupier/trusty/internal/llm"
+	"github.com/WorldOccupier/trusty/internal/types"
 )
 
 type SemanticAnalyzer struct {

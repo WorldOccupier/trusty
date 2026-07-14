@@ -1,6 +1,6 @@
 package report
 
-import "github.com/user/trustpilot/internal/types"
+import "github.com/WorldOccupier/trusty/internal/types"
 
 type Reporter struct{}
 
