@@ -39,7 +39,13 @@ func NewScanner(cfg *config.Config, llmProvider llm.Provider) *Scanner {
 func (s *Scanner) Scan(ctx context.Context, opts types.DiffOptions) (*types.ScanResult, error) {
 	start := time.Now()
 
-	files, err := GetDiff(opts)
+	var files []types.DiffFile
+	var err error
+	if opts.RawDiff != "" {
+		files, err = ParseDiffContent(opts.RawDiff)
+	} else {
+		files, err = GetDiff(opts)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("getting diff: %w", err)
 	}

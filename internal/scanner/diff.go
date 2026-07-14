@@ -52,7 +52,7 @@ func GetDiff(opts types.DiffOptions) ([]types.DiffFile, error) {
 		return nil, fmt.Errorf("running git diff: %w", err)
 	}
 
-	return parseDiff(string(out))
+	return ParseDiffContent(string(out))
 }
 
 func scanDirectory(dir string) ([]types.DiffFile, error) {
@@ -89,7 +89,7 @@ func scanDirectory(dir string) ([]types.DiffFile, error) {
 	return files, err
 }
 
-func parseDiff(raw string) ([]types.DiffFile, error) {
+func ParseDiffContent(raw string) ([]types.DiffFile, error) {
 	if strings.TrimSpace(raw) == "" {
 		return nil, nil
 	}

@@ -31,6 +31,8 @@ var (
 	fuzzDir         string
 	noCache         bool
 	fingerprintAll  bool
+	outFile         string
+	diffFile        string
 )
 
 func main() {
@@ -87,6 +89,8 @@ Examples:
 	scanCmd.Flags().StringVarP(&outputFmt, "format", "f", "json", "Output format: json, sarif")
 	scanCmd.Flags().IntVarP(&minScore, "min-score", "m", 0, "Minimum trust score (0-100)")
 	scanCmd.Flags().BoolVar(&noCache, "no-cache", false, "Disable incremental cache")
+	scanCmd.Flags().StringVarP(&outFile, "output", "o", "", "Write output to file")
+	scanCmd.Flags().StringVar(&diffFile, "diff-file", "", "Read diff from file instead of git")
 
 	halluCmd := &cobra.Command{
 		Use:   "hallu",
@@ -102,6 +106,7 @@ Examples:
 	halluCmd.Flags().BoolVarP(&staged, "staged", "s", false, "Check staged changes only")
 	halluCmd.Flags().StringVar(&from, "from", "", "Start commit")
 	halluCmd.Flags().StringVar(&to, "to", "", "End commit")
+	halluCmd.Flags().StringVarP(&outFile, "output", "o", "", "Write output to file")
 
 	reportCmd := &cobra.Command{
 		Use:   "report",
@@ -114,11 +119,12 @@ Examples:
 		RunE: runReport,
 	}
 
-	reportCmd.Flags().StringVarP(&outputFmt, "format", "f", "json", "Report format: json, sarif")
+	reportCmd.Flags().StringVarP(&outputFmt, "format", "f", "json", "Report format: json, sarif, html")
 	reportCmd.Flags().IntVarP(&minScore, "min-score", "m", 70, "Minimum trust score")
 	reportCmd.Flags().BoolVarP(&staged, "staged", "s", false, "Scan staged changes")
 	reportCmd.Flags().StringVar(&from, "from", "", "Start commit")
 	reportCmd.Flags().StringVar(&to, "to", "", "End commit")
+	reportCmd.Flags().StringVarP(&outFile, "output", "o", "", "Write output to file")
 
 	securityCmd := &cobra.Command{
 		Use:   "security",
@@ -141,6 +147,7 @@ Examples:
 	securityCmd.Flags().StringVar(&from, "from", "", "Start commit")
 	securityCmd.Flags().StringVar(&to, "to", "", "End commit")
 	securityCmd.Flags().StringVar(&minSeverity, "min-severity", "", "Minimum severity (error, warning, info)")
+	securityCmd.Flags().StringVarP(&outFile, "output", "o", "", "Write output to file")
 
 	logicCmd := &cobra.Command{
 		Use:   "logic",
@@ -163,6 +170,7 @@ Examples:
 	logicCmd.Flags().StringVar(&from, "from", "", "Start commit")
 	logicCmd.Flags().StringVar(&to, "to", "", "End commit")
 	logicCmd.Flags().StringVar(&minSeverity, "min-severity", "", "Minimum severity (error, warning, info)")
+	logicCmd.Flags().StringVarP(&outFile, "output", "o", "", "Write output to file")
 
 	testgenCmd := &cobra.Command{
 		Use:   "testgen",
@@ -217,6 +225,17 @@ Examples:
 	intentCmd.Flags().StringVar(&from, "from", "", "Start commit")
 	intentCmd.Flags().StringVar(&to, "to", "", "End commit")
 
+	initCmd := &cobra.Command{
+		Use:   "init",
+		Short: "Scaffold a .trusty.yml config file",
+		Long: `Generate a default .trusty.yml configuration file in the current directory.
+Will not overwrite an existing config file.
+
+Examples:
+  trusty init`,
+		RunE: runInit,
+	}
+
 	fingerprintCmd := &cobra.Command{
 		Use:   "fingerprint",
 		Short: "Detect AI-generated code patterns statistically",
@@ -258,6 +277,7 @@ Examples:
 	root.AddCommand(testgenCmd)
 	root.AddCommand(fuzzCmd)
 	root.AddCommand(intentCmd)
+	root.AddCommand(initCmd)
 	root.AddCommand(fingerprintCmd)
 	root.AddCommand(watchCmd)
 
@@ -302,7 +322,9 @@ func runSecurity(cmd *cobra.Command, args []string) error {
 	}
 
 	data, _ := json.MarshalIndent(output, "", "  ")
-	fmt.Println(string(data))
+	if err := writeOutput(data, outFile); err != nil {
+		return err
+	}
 
 	for _, f := range findings {
 		if f.Severity == types.SeverityError || f.Severity == types.SeverityWarning {
@@ -310,14 +332,7 @@ func runSecurity(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	hasErrors := false
-	for _, f := range findings {
-		if f.Severity == types.SeverityError {
-			hasErrors = true
-			break
-		}
-	}
-	if hasErrors {
+	if len(findings) > 0 {
 		os.Exit(1)
 	}
 
@@ -359,12 +374,18 @@ func runLogic(cmd *cobra.Command, args []string) error {
 	}
 
 	data, _ := json.MarshalIndent(output, "", "  ")
-	fmt.Println(string(data))
+	if err := writeOutput(data, outFile); err != nil {
+		return err
+	}
 
 	for _, f := range findings {
 		if f.Severity == types.SeverityError || f.Severity == types.SeverityWarning {
 			fmt.Fprintf(os.Stderr, "[%s] %s:%d %s\n", severityStr(f.Severity), f.Category, f.Line, f.Message)
 		}
+	}
+
+	if len(findings) > 0 {
+		os.Exit(1)
 	}
 
 	return nil
@@ -411,6 +432,54 @@ func filterBySeverity(findings []types.Finding, minSev types.Severity) []types.F
 		}
 	}
 	return filtered
+}
+
+func writeOutput(data []byte, path string) error {
+	if path == "" {
+		fmt.Println(string(data))
+		return nil
+	}
+	return os.WriteFile(filepath.Clean(path), data, 0644)
+}
+
+func runInit(cmd *cobra.Command, args []string) error {
+	for _, name := range []string{".trusty.yml", ".trusty.yaml"} {
+		if _, err := os.Stat(name); err == nil {
+			return fmt.Errorf("%s already exists", name)
+		}
+	}
+	def := `# Trusty Configuration
+version: 1
+
+scan:
+  min_score: 70
+  languages:
+    - go
+    - python
+    - typescript
+
+llm:
+  provider: openai
+  model: gpt-4o
+  temperature: 0.1
+  # api_key: set via OPENAI_API_KEY or ANTHROPIC_API_KEY
+
+rules:
+  hallucination:
+    severity: error
+  logic_errors:
+    severity: warning
+  security:
+    severity: error
+
+output:
+  format: pretty
+`
+	if err := os.WriteFile(".trusty.yml", []byte(def), 0644); err != nil {
+		return fmt.Errorf("writing .trusty.yml: %w", err)
+	}
+	fmt.Println("Created .trusty.yml")
+	return nil
 }
 
 func runFuzz(cmd *cobra.Command, args []string) error {
@@ -553,6 +622,14 @@ func runScan(cmd *cobra.Command, args []string) error {
 		Head:   head,
 	}
 
+	if diffFile != "" {
+		raw, err := os.ReadFile(filepath.Clean(diffFile))
+		if err != nil {
+			return fmt.Errorf("reading diff file: %w", err)
+		}
+		diffOpts.RawDiff = string(raw)
+	}
+
 	result, err := s.Scan(context.Background(), diffOpts)
 	s.FlushCache()
 	if err != nil {
@@ -562,20 +639,42 @@ func runScan(cmd *cobra.Command, args []string) error {
 	reporter := report.New()
 	scanResult := reporter.BuildResult(result.Files, result.Summary, result.TrustScore, result.Timestamp, result.DurationMs)
 
+	out := os.Stdout
+	if outFile != "" {
+		f, err := os.Create(filepath.Clean(outFile))
+		if err != nil {
+			return fmt.Errorf("creating output file: %w", err)
+		}
+		defer f.Close()
+		out = f
+	}
+
 	switch cfg.Output.Format {
 	case "sarif":
-		if err := report.WriteSARIF(os.Stdout, &scanResult); err != nil {
+		if err := report.WriteSARIF(out, &scanResult); err != nil {
 			return fmt.Errorf("writing SARIF: %w", err)
 		}
+	case "html":
+		data, err := report.FormatHTML(scanResult)
+		if err != nil {
+			return fmt.Errorf("formatting HTML: %w", err)
+		}
+		if out != os.Stdout {
+			if _, err := fmt.Fprint(out, data); err != nil {
+				return fmt.Errorf("writing HTML: %w", err)
+			}
+		} else {
+			fmt.Println(data)
+		}
 	default:
-		if err := report.WriteJSON(os.Stdout, scanResult); err != nil {
+		if err := report.WriteJSON(out, scanResult); err != nil {
 			return fmt.Errorf("writing JSON: %w", err)
 		}
 	}
 
-	if result.Summary.Status == "failed" {
-		fmt.Fprintf(os.Stderr, "\nTrust score %d/%d — below minimum threshold of %d\n",
-			result.TrustScore, 100, cfg.Scan.MinScore)
+	if result.Summary.TotalIssues > 0 {
+		fmt.Fprintf(os.Stderr, "Found %d issue(s) — trust score %d/100\n",
+			result.Summary.TotalIssues, result.TrustScore)
 		os.Exit(1)
 	}
 
@@ -632,7 +731,9 @@ func runHallu(cmd *cobra.Command, args []string) error {
 	}
 
 	data, _ := json.MarshalIndent(output, "", "  ")
-	fmt.Println(string(data))
+	if err := writeOutput(data, outFile); err != nil {
+		return err
+	}
 
 	if len(issues) > 0 {
 		fmt.Fprintf(os.Stderr, "\nFound %d potentially hallucinated import(s)\n", len(issues))

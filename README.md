@@ -17,9 +17,21 @@ trusty scan
 # Check for hallucinated imports
 trusty hallu
 
+# Detect security vulnerabilities
+trusty security
+
+# Detect logic errors
+trusty logic
+
+# AI-code fingerprinting
+trusty fingerprint --all
+
 # Scan with LLM analysis (requires API key)
 export OPENAI_API_KEY="sk-..."
 trusty scan --format sarif --min-score 80
+
+# Generate default config
+trusty init
 ```
 
 ## Features
@@ -28,35 +40,38 @@ trusty scan --format sarif --min-score 80
 
 - `scan` — Git diff analysis with 3-tier verification engine
 - `hallu` — AI hallucination detection (fake imports, non-existent APIs)
-- `report` — Structured output with SARIF, JSON, and trust scoring
+- `report` — Structured output with SARIF, JSON, HTML, and trust scoring
+- `init` — Scaffold `.trusty.yml` config file
 - Config file (`.trusty.yml`) with rules, severity, exclusions
 - Multi-language support (Go, Python, JavaScript/TypeScript)
 
-### Phase 2 — Semantic Analysis (In Progress)
+### Phase 2 — Semantic Analysis (Implemented)
 
 - [x] **Security vulnerability scan** — Detect SQL injection, XSS, hardcoded secrets, insecure crypto, missing input validation
 - [x] **Logic error detection** — Detect off-by-one errors, wrong variable usage, inverted conditionals, missing edge cases
 - [x] **Test contract generation** — Auto-generate behavioral property-based tests from function signatures and code analysis
 - [x] **Fuzz testing** — Property-based fuzz testing with random input generation for exported Go functions
-- [ ] **Intent extraction** — Parse PR descriptions, commit messages, and code context to extract intended behavior, then verify code matches intent
+- [x] **Intent extraction** — Parse commit messages and code context via LLM; flag mismatches between described intent and implementation
 
-### Phase 3 — Integration & UX
+### Phase 3 — Integration & UX (In Progress)
 
 - [x] **GitHub Actions integration** — Composite action that gates PR merges based on trust score
 - [x] **HTML report** — Beautiful, shareable HTML report with score bar and per-file findings
 - [x] **Watch mode** — `trusty watch` — auto-scan on file change with fsnotify
+- [x] **File-based diff input** — `scan --diff-file` accepts a pre-generated diff instead of reading from git
+- [x] **Shell completions** — `trusty completion bash|zsh|fish|powershell` (cobra built-in)
 - [ ] **GitLab CI integration** — Merge request decoration with findings
 - [ ] **GitHub PR commenting** — Auto-comment on PRs with per-file findings and suggestions
 - [ ] **TUI mode** — Interactive terminal UI (Bubble Tea) for browsing findings, applying fixes, and exploring scan results
 - [ ] **VS Code extension** — Inline diagnostics via LSP protocol
 
-### Phase 4 — Advanced
+### Phase 4 — Advanced (In Progress)
 
-- [ ] **AI-code fingerprinting** — Statistical detection of AI-generated code patterns
+- [x] **AI-code fingerprinting** — Statistical detection of AI-generated code patterns (8 weighted signals, 0–100 score)
+- [x] **Incremental cache** — Skip re-analysis of unchanged files via SHA256 content hash; `.trusty-cache.json`
+- [x] **Multi-model LLM** — OpenAI, Anthropic Claude, local Ollama
 - [ ] **Regression tracking** — Track trust scores across commits/branches; alert when score drops
 - [ ] **Team policies** — Organization-wide `.trusty.yml` with enforced rules, minimum scores per repo/team
-- [x] **Multi-model LLM** — OpenAI, Anthropic Claude, local Ollama
-- [ ] **Incremental cache** — Skip re-analysis of unchanged files; 10x speedup
 - [ ] **Distributed scan** — Parallel scanning across packages/microservices
 - [ ] **Plugin system** — Lua or Go plugin API for custom checkers
 
@@ -155,8 +170,30 @@ trusty scan --min-score 80
 # Output SARIF format (GitHub Advanced Security compatible)
 trusty scan --format sarif --min-score 80
 
+# Output HTML report
+trusty scan --format html --output report.html
+
+# Write JSON output to file
+trusty scan --output results.json
+
+# Scan from a pre-generated diff file (no git repo needed)
+trusty scan --diff-file /tmp/changes.diff
+
+# Disable incremental cache
+trusty scan --no-cache
+
 # Use custom config
 trusty scan --config .trusty.yml
+
+# Exit code 1 when issues found (CI gating)
+trusty scan && echo "Clean" || echo "Issues found"
+```
+
+### `trusty init`
+
+```bash
+# Scaffold .trusty.yml in current directory (refuses to overwrite)
+trusty init
 ```
 
 ### `trusty hallu`
@@ -167,6 +204,9 @@ trusty hallu
 
 # Check specific commits
 trusty hallu --from HEAD~1 --to HEAD
+
+# Write results to file
+trusty hallu --output hallu-results.json
 ```
 
 ### `trusty report`
@@ -196,6 +236,9 @@ trusty security --min-severity high
 
 # Check specific commits
 trusty security --from HEAD~1 --to HEAD
+
+# Write results to file
+trusty security --output security-results.json
 ```
 
 ### `trusty logic`
@@ -207,8 +250,11 @@ trusty logic
 # Run logic analysis on specific commits
 trusty logic --from HEAD~3 --to HEAD
 
-# Output detailed findings
-trusty logic --verbose
+# Filter by minimum severity
+trusty logic --min-severity warning
+
+# Write results to file
+trusty logic --output logic-results.json
 ```
 
 ### `trusty testgen`
@@ -240,6 +286,35 @@ trusty fuzz --dir ./internal/scanner
 trusty fuzz --iterations 1000
 ```
 
+### `trusty fingerprint`
+
+```bash
+# Analyze changed files for AI-generated code patterns
+trusty fingerprint
+
+# Analyze all tracked Go files in the repo
+trusty fingerprint --all
+
+# Analyze staged changes
+trusty fingerprint --staged
+
+# Analyze a specific commit range
+trusty fingerprint --from HEAD~1 --to HEAD
+```
+
+### `trusty intent`
+
+```bash
+# Verify code matches commit intent (requires LLM API key)
+trusty intent
+
+# Check staged changes against intent
+trusty intent --staged
+
+# Check specific commits
+trusty intent --from HEAD~1 --to HEAD
+```
+
 ### `trusty watch`
 
 ```bash
@@ -253,6 +328,15 @@ trusty watch ./internal/scanner
 trusty watch ./pkg/... ./cmd/...
 ```
 
+### `trusty completion`
+
+```bash
+# Generate shell completion scripts
+trusty completion bash > /etc/bash_completion.d/trusty
+trusty completion zsh > /usr/local/share/zsh/site-functions/_trusty
+trusty completion fish > ~/.config/fish/completions/trusty.fish
+```
+
 ## Architecture
 
 ```
@@ -261,7 +345,7 @@ trusty/
 ├── internal/
 │   ├── scanner/                    # Core 3-tier scan engine
 │   │   ├── scanner.go              # Orchestrator
-│   │   ├── diff.go                 # Git diff parsing
+│   │   ├── diff.go                 # Git diff parsing + ParseDiffContent
 │   │   ├── static.go               # Tier 1: AST analysis
 │   │   ├── semantic.go             # Tier 2: LLM-based analysis
 │   │   ├── verify.go               # Tier 3: Behavioral verification
@@ -269,6 +353,9 @@ trusty/
 │   │   ├── logic.go                # Logic error detection
 │   │   ├── testgen.go              # Test contract generation
 │   │   ├── fuzz.go                 # Property-based fuzz testing
+│   │   ├── fingerprint.go          # AI-code fingerprinting (8 signals)
+│   │   ├── intent.go               # LLM-based intent verification
+│   │   ├── cache.go                # Incremental SHA256 content-hash cache
 │   │   └── watch.go                # Fsnotify file watcher
 │   ├── hallucination/              # Hallucination detection
 │   │   ├── detector.go             # Detection logic
@@ -279,11 +366,14 @@ trusty/
 │   │   ├── html.go                 # HTML report generation
 │   │   └── score.go                # Trust score models
 │   ├── config/                     # .trusty.yml parsing
-│   └── llm/                        # LLM provider abstraction
-│       ├── provider.go             # Interface + factory
-│       ├── openai.go               # OpenAI GPT-4o
-│       ├── anthropic.go            # Anthropic Claude
-│       └── ollama.go               # Local inference
+│   │   └── config.go
+│   ├── llm/                        # LLM provider abstraction
+│   │   ├── provider.go             # Interface + factory
+│   │   ├── openai.go               # OpenAI GPT-4o
+│   │   ├── anthropic.go            # Anthropic Claude
+│   │   └── ollama.go               # Local inference
+│   └── types/                      # Shared types
+│       └── types.go
 ├── .github/actions/trusty/         # GitHub Action
 ├── go.mod
 └── README.md

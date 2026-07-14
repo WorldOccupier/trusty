@@ -44,16 +44,20 @@ internal/
 
 | Command       | Description | Key Flags |
 |---------------|-------------|-----------|
-| `scan`        | 3-tier scan (static + LLM + behavioral) | `--staged, --from, --to, --base, --head, --format, --min-score, --no-cache` |
-| `hallu`       | Hallucinated import detection | `--staged, --from, --to` |
-| `report`      | Generate report (json/sarif/html) | `--format, --min-score, --staged` |
-| `security`    | Vulnerability scan | `--staged, --from, --to, --min-severity` |
-| `logic`       | Logic error detection | `--staged, --from, --to, --min-severity` |
+| `scan`        | 3-tier scan (static + LLM + behavioral) | `--staged, --from, --to, --base, --head, --format, --output, --min-score, --no-cache, --diff-file` |
+| `hallu`       | Hallucinated import detection | `--staged, --from, --to, --output` |
+| `report`      | Generate report (json/sarif/html) | `--format, --min-score, --staged, --output` |
+| `security`    | Vulnerability scan | `--staged, --from, --to, --min-severity, --output` |
+| `logic`       | Logic error detection | `--staged, --from, --to, --min-severity, --output` |
 | `testgen`     | Generate test contracts | `--staged, --from, --to` |
 | `fuzz`        | Property-based fuzz testing | `--staged, --dir, --iterations` |
 | `fingerprint` | AI-code fingerprinting | `--staged, --all, --from, --to` |
 | `intent`      | Intent verification via LLM | `--staged, --from, --to` |
 | `watch`       | Auto-scan on file change | `[dirs...]` |
+| `init`        | Scaffold .trusty.yml | (none) |
+| `completion`  | Shell completions (bash/zsh/fish) | (cobra built-in) |
+
+**Exit codes**: All detection commands exit 1 when findings are present (not just below score threshold). Use for CI gating.
 
 ## Code Conventions
 
@@ -92,7 +96,17 @@ output:
 - Test contracts generate `_trusty_test.go` files (not `_test.go`) to avoid conflicts.
 - Fingerprint uses 8 weighted signals; scores >= 70 = "likely-ai".
 - Intent requires LLM API key; passes commit messages as context.
+- **Exit codes**: all detection commands (`scan`, `security`, `logic`, `hallu`, `intent`, `fuzz`) exit 1 when issues found — suitable for CI gating.
+- **Diff file**: `scan --diff-file` accepts a pre-generated git diff from file/stdin, bypassing git repo dependency. `ParseDiffContent()` in `diff.go` is the exported parser.
+- **Output file**: `--output` / `-o` flag on `scan`, `report`, `security`, `logic`, `hallu` writes JSON output to a file instead of stdout. `scan --format html --output report.html` also works.
+- **Shell completions**: available natively via cobra: `trusty completion bash | source`
 
 ## Module Path
 
 `github.com/WorldOccupier/trusty`
+
+## Environment Variables
+
+- `OPENAI_API_KEY` — OpenAI API key (default provider)
+- `ANTHROPIC_API_KEY` — Anthropic API key (when `provider: anthropic`)
+- `CI` — when `true`, enables CI mode (set automatically in GitHub Actions)
