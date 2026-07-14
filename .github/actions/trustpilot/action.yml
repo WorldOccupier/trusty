@@ -1,0 +1,77 @@
+name: 'TrustPilot AI Code Verification'
+description: 'Verify AI-generated code with static analysis, semantic checks, and behavioral verification'
+author: 'TrustPilot'
+
+inputs:
+  min-score:
+    description: 'Minimum trust score (0-100)'
+    required: false
+    default: '70'
+  format:
+    description: 'Output format (json, sarif)'
+    required: false
+    default: 'sarif'
+  token:
+    description: 'GitHub token for PR comments'
+    required: false
+    default: ${{ github.token }}
+  openai-api-key:
+    description: 'OpenAI API key for LLM-based analysis'
+    required: false
+
+outputs:
+  trust-score:
+    description: 'Overall trust score'
+    value: ${{ steps.scan.outputs.trust-score }}
+  status:
+    description: 'Scan status (clean, warning, failed)'
+    value: ${{ steps.scan.outputs.status }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install TrustPilot
+      shell: bash
+      run: |
+        if ! command -v trustpilot &> /dev/null; then
+          echo "Installing TrustPilot..."
+          go install github.com/user/trustpilot/cmd/trustpilot@latest
+        fi
+
+    - name: Run TrustPilot Scan
+      id: scan
+      shell: bash
+      env:
+        OPENAI_API_KEY: ${{ inputs.openai-api-key }}
+      run: |
+        trustpilot scan \
+          --base origin/${{ github.base_ref }} \
+          --head HEAD \
+          --min-score ${{ inputs.min-score }} \
+          --format ${{ inputs.format }} \
+          --config .trustpilot.yml \
+          > trustpilot-results.${{ inputs.format == 'sarif' && 'sarif' || 'json' }}
+
+        SCORE=$(trustpilot scan \
+          --base origin/${{ github.base_ref }} \
+          --head HEAD \
+          --min-score ${{ inputs.min-score }} \
+          --format json 2>/dev/null | jq -r '.trust_score // 0')
+
+        echo "trust-score=$SCORE" >> $GITHUB_OUTPUT
+
+        if [ "$SCORE" -lt "${{ inputs.min-score }}" ]; then
+          echo "status=failed" >> $GITHUB_OUTPUT
+          echo "❌ Trust score $SCORE/${{ inputs.min-score }} — below minimum threshold"
+          exit 1
+        else
+          echo "status=clean" >> $GITHUB_OUTPUT
+          echo "✅ Trust score $SCORE"
+        fi
+
+    - name: Upload SARIF Results
+      if: inputs.format == 'sarif'
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: trustpilot-results.sarif
+        category: trustpilot

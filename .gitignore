@@ -1,0 +1,28 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+trustpilot
+
+# Test binary
+*.test
+
+# Output files
+*.out
+trustpilot-report.json
+trustpilot.sarif
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Dependencies
+vendor/
