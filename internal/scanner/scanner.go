@@ -20,6 +20,7 @@ type Scanner struct {
 	verify   *VerificationEngine
 	security *SecurityScanner
 	logic    *LogicDetector
+	cache    *ScanCache
 }
 
 func NewScanner(cfg *config.Config, llmProvider llm.Provider) *Scanner {
@@ -31,6 +32,7 @@ func NewScanner(cfg *config.Config, llmProvider llm.Provider) *Scanner {
 		verify:   NewVerificationEngine(),
 		security: NewSecurityScanner(),
 		logic:    NewLogicDetector(),
+		cache:    NewScanCache(""),
 	}
 }
 
@@ -71,6 +73,18 @@ func (s *Scanner) Scan(ctx context.Context, opts types.DiffOptions) (*types.Scan
 		go func(f types.DiffFile) {
 			defer wg.Done()
 
+			if cachedFindings, cachedScore, ok := s.cache.Get(f.Path, f.Content); ok {
+				mu.Lock()
+				fileResults = append(fileResults, types.FileResult{
+					Path:     f.Path,
+					Language: f.Language,
+					Findings: cachedFindings,
+					Score:    cachedScore,
+				})
+				mu.Unlock()
+				return
+			}
+
 			var findings []types.Finding
 
 			if enabledTiers[1] {
@@ -103,6 +117,8 @@ func (s *Scanner) Scan(ctx context.Context, opts types.DiffOptions) (*types.Scan
 			}
 
 			score := calculateScore(findings)
+
+			s.cache.Set(f.Path, f.Content, findings, score)
 
 			mu.Lock()
 			fileResults = append(fileResults, types.FileResult{
@@ -186,6 +202,14 @@ func (s *Scanner) Scan(ctx context.Context, opts types.DiffOptions) (*types.Scan
 			MinScore:     s.cfg.Scan.MinScore,
 		},
 	}, nil
+}
+
+func (s *Scanner) SetCacheEnabled(enabled bool) {
+	s.cache.SetEnabled(enabled)
+}
+
+func (s *Scanner) FlushCache() {
+	s.cache.Flush()
 }
 
 func calculateScore(findings []types.Finding) int {

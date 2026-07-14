@@ -29,6 +29,8 @@ var (
 	staged          bool
 	verbose         bool
 	fuzzDir         string
+	noCache         bool
+	fingerprintAll  bool
 )
 
 func main() {
@@ -84,6 +86,7 @@ Examples:
 	scanCmd.Flags().StringVar(&head, "head", "", "Head branch (requires --base)")
 	scanCmd.Flags().StringVarP(&outputFmt, "format", "f", "json", "Output format: json, sarif")
 	scanCmd.Flags().IntVarP(&minScore, "min-score", "m", 0, "Minimum trust score (0-100)")
+	scanCmd.Flags().BoolVar(&noCache, "no-cache", false, "Disable incremental cache")
 
 	halluCmd := &cobra.Command{
 		Use:   "hallu",
@@ -197,6 +200,43 @@ Examples:
 	fuzzCmd.Flags().StringVar(&fuzzDir, "dir", ".", "Directory containing Go files to fuzz")
 	fuzzCmd.Flags().IntVar(&fuzzIterations, "iterations", 100, "Number of fuzz iterations per function")
 
+	intentCmd := &cobra.Command{
+		Use:   "intent",
+		Short: "Verify code matches commit intent via LLM",
+		Long: `Analyze code changes against commit messages to verify the implementation
+matches the described intent. Uses LLM to detect mismatches, missing pieces,
+or contradictory implementations.
+
+Examples:
+  trusty intent                         # Check intent of latest changes
+  trusty intent --staged                # Check staged changes
+  trusty intent --from HEAD~1 --to HEAD # Check specific commits`,
+		RunE: runIntent,
+	}
+	intentCmd.Flags().BoolVarP(&staged, "staged", "s", false, "Check staged changes only")
+	intentCmd.Flags().StringVar(&from, "from", "", "Start commit")
+	intentCmd.Flags().StringVar(&to, "to", "", "End commit")
+
+	fingerprintCmd := &cobra.Command{
+		Use:   "fingerprint",
+		Short: "Detect AI-generated code patterns statistically",
+		Long: `Analyze code for statistical patterns that correlate with AI-generated code.
+Uses 8 signal dimensions: comment density, line uniformity, doc coverage,
+function length consistency, naming conventions, repeated patterns,
+import grouping, and error handling verbosity.
+
+Examples:
+  trusty fingerprint                       # Analyze changed files
+  trusty fingerprint --staged              # Analyze staged changes
+  trusty fingerprint --all                 # Analyze all files in repo
+  trusty fingerprint --from HEAD~1 --to HEAD`,
+		RunE: runFingerprint,
+	}
+	fingerprintCmd.Flags().BoolVarP(&staged, "staged", "s", false, "Analyze staged changes only")
+	fingerprintCmd.Flags().StringVar(&from, "from", "", "Start commit")
+	fingerprintCmd.Flags().StringVar(&to, "to", "", "End commit")
+	fingerprintCmd.Flags().BoolVar(&fingerprintAll, "all", false, "Analyze all tracked Go files")
+
 	watchCmd := &cobra.Command{
 		Use:   "watch",
 		Short: "Watch files and auto-scan on changes",
@@ -217,6 +257,8 @@ Examples:
 	root.AddCommand(logicCmd)
 	root.AddCommand(testgenCmd)
 	root.AddCommand(fuzzCmd)
+	root.AddCommand(intentCmd)
+	root.AddCommand(fingerprintCmd)
 	root.AddCommand(watchCmd)
 
 	if err := root.Execute(); err != nil {
@@ -499,6 +541,10 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	s := scanner.NewScanner(cfg, llmProvider)
 
+	if noCache {
+		s.SetCacheEnabled(false)
+	}
+
 	diffOpts := types.DiffOptions{
 		Staged: staged,
 		From:   from,
@@ -508,6 +554,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 
 	result, err := s.Scan(context.Background(), diffOpts)
+	s.FlushCache()
 	if err != nil {
 		return fmt.Errorf("scan failed: %w", err)
 	}
@@ -655,6 +702,127 @@ func runReport(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("Report written to %s (trust score: %d/100)\n", outFile, result.TrustScore)
+	return nil
+}
+
+func runIntent(cmd *cobra.Command, args []string) error {
+	cfg, err := loadConfig()
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+
+	if cfg.LLM.APIKey == "" {
+		return fmt.Errorf("LLM API key required — set OPENAI_API_KEY or ANTHROPIC_API_KEY")
+	}
+
+	llmCfg := llm.ProviderConfig{
+		Model:       cfg.LLM.Model,
+		Temperature: cfg.LLM.Temperature,
+		APIKey:      cfg.LLM.APIKey,
+		BaseURL:     cfg.LLM.BaseURL,
+	}
+	llmProvider := llm.NewProvider(cfg.LLM.Provider, llmCfg)
+
+	diffOpts := types.DiffOptions{
+		Staged: staged,
+		From:   from,
+		To:     to,
+	}
+
+	files, err := scanner.GetDiff(diffOpts)
+	if err != nil {
+		return fmt.Errorf("getting diff: %w", err)
+	}
+
+	analyzer := scanner.NewIntentAnalyzer(llmProvider)
+	results, err := analyzer.Analyze(context.Background(), files, diffOpts)
+	if err != nil {
+		return fmt.Errorf("intent analysis: %w", err)
+	}
+
+	output := map[string]interface{}{
+		"results": results,
+		"total":   len(results),
+	}
+
+	data, _ := json.MarshalIndent(output, "", "  ")
+	fmt.Println(string(data))
+
+	totalIssues := 0
+	for _, r := range results {
+		totalIssues += len(r.Findings)
+	}
+	if totalIssues > 0 {
+		fmt.Fprintf(os.Stderr, "\nFound %d intent mismatch(es)\n", totalIssues)
+		os.Exit(1)
+	}
+
+	return nil
+}
+
+func runFingerprint(cmd *cobra.Command, args []string) error {
+	var files []types.DiffFile
+
+	if fingerprintAll {
+		var goFiles []string
+		filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return nil
+			}
+			if info.IsDir() && strings.HasPrefix(info.Name(), ".") && path != "." {
+				return filepath.SkipDir
+			}
+			if strings.HasSuffix(path, ".go") {
+				goFiles = append(goFiles, path)
+			}
+			return nil
+		})
+		for _, gf := range goFiles {
+			if strings.HasSuffix(gf, "_test.go") || strings.HasSuffix(gf, "_fuzz_test.go") || strings.HasSuffix(gf, "_trusty_test.go") {
+				continue
+			}
+			data, err := os.ReadFile(filepath.Clean(gf))
+			if err != nil {
+				continue
+			}
+			files = append(files, types.DiffFile{
+				Path:     gf,
+				Language: "go",
+				Content:  string(data),
+			})
+		}
+	} else {
+		diffOpts := types.DiffOptions{
+			Staged: staged,
+			From:   from,
+			To:     to,
+		}
+		var err error
+		files, err = scanner.GetDiff(diffOpts)
+		if err != nil {
+			return fmt.Errorf("getting diff: %w", err)
+		}
+	}
+
+	fp := scanner.NewFingerprinter()
+	var results []scanner.FingerprintResult
+
+	for _, f := range files {
+		if f.Language != "go" && f.Language != "python" && f.Language != "javascript" && f.Language != "typescript" {
+			continue
+		}
+		result := fp.Analyze(f.Content, f.Path)
+		results = append(results, result)
+	}
+
+	output := map[string]interface{}{
+		"files":  results,
+		"total":  len(results),
+	}
+
+	data, _ := json.MarshalIndent(output, "", "  ")
+	fmt.Println(string(data))
+
 	return nil
 }
 
