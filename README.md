@@ -75,14 +75,14 @@ trusty init
 - [x] **Distributed scan** — `scan --all-packages` discovers Go modules and runs scan per package
 - [x] **Plugin system** — `internal/plugin/` Go plugin interface (`Checker`) + `.so` loader via `plugin.Open()`
 
-### Phase 5 — Enterprise
+### Phase 5 — Enterprise (Implemented)
 
-- [ ] **Audit trail** — Log all scans, findings, and approvals for compliance
-- [ ] **SBOM generation** — Generate software bill of materials from scan
-- [ ] **Policy-as-code** — Rego/OPA-based verification policies
-- [ ] **Dashboard** — Web UI for team-wide trust metrics and trends
-- [ ] **SSO/SAML** — Enterprise authentication
-- [ ] **On-prem deployment** — Helm chart for Kubernetes, Docker image
+- [x] **Audit trail** — `trusty audit` — Append-only JSONL audit log with user, commit, score, filterable by status/date
+- [x] **SBOM generation** — `trusty sbom` — CycloneDX JSON SBOM from go.mod/go.sum (Go, npm, pip support)
+- [x] **Policy-as-code** — `trusty policy` — YAML policy DSL with field conditions (severity, rule, category) + OPA binary integration (`--opa`)
+- [x] **Dashboard** — `trusty dashboard` — Self-contained HTML dashboard with Chart.js score trends and scan history
+- [x] **SSO/SAML** — `internal/sso/` — Config struct + middleware for OIDC, SAML, GitHub, Google providers
+- [x] **On-prem deployment** — Multi-stage Dockerfile + Helm chart (deployment, service, config, secrets)
 
 ## 3-Tier Scan Engine
 
@@ -371,6 +371,62 @@ trusty scan --policy-file ./team-policy.yml
 trusty scan --policy-url https://example.com/org-policy.yml
 ```
 
+### `trusty audit`
+
+```bash
+# View recent audit entries
+trusty audit
+
+# Show last 50 entries
+trusty audit --limit 50
+
+# Filter by status
+trusty audit --status failed
+
+# Output as JSON
+trusty audit --json
+```
+
+### `trusty sbom`
+
+```bash
+# Generate CycloneDX SBOM from go.mod
+trusty sbom
+
+# Generate SBOM for all Go modules in workspace
+trusty sbom --all
+
+# Write to file
+trusty sbom --output bom.json
+```
+
+### `trusty policy`
+
+```bash
+# Evaluate YAML policy against live scan results
+trusty policy --policy policy.yml
+
+# Evaluate against existing findings
+trusty scan --output findings.json
+trusty policy --policy policy.yml --input findings.json
+
+# Evaluate via OPA binary
+trusty policy --policy policy.rego --opa
+```
+
+### `trusty dashboard`
+
+```bash
+# Generate HTML dashboard from audit data
+trusty dashboard
+
+# Custom output path
+trusty dashboard --output dashboard.html
+
+# Output raw data as JSON
+trusty dashboard --json
+```
+
 ## Architecture
 
 ```
@@ -395,6 +451,14 @@ trusty/
 │   ├── hallucination/              # Hallucination detection
 │   │   ├── detector.go             # Detection logic
 │   │   └── registry.go             # Package registry client
+│   ├── audit/                      # Audit trail (JSONL)
+│   │   └── audit.go
+│   ├── sbom/                       # CycloneDX SBOM generation
+│   │   └── sbom.go
+│   ├── dashboard/                  # HTML dashboard from audit data
+│   │   └── dashboard.go
+│   ├── sso/                        # SSO/SAML config + middleware
+│   │   └── sso.go
 │   ├── report/                     # Output formatting
 │   │   ├── json.go                 # JSON output + ParseResult
 │   │   ├── sarif.go                # SARIF v2.1.0 output
@@ -402,8 +466,9 @@ trusty/
 │   │   └── score.go                # Trust score models
 │   ├── config/                     # .trusty.yml parsing
 │   │   └── config.go
-│   ├── policy/                     # Team policy overlay
-│   │   └── policy.go
+│   ├── policy/                     # Team policy overlay + engine
+│   │   ├── policy.go               # Policy overlay (file/URL)
+│   │   └── engine.go               # YAML policy engine + OPA
 │   ├── prcomment/                  # GitHub PR comment posting
 │   │   └── github.go
 │   ├── plugin/                     # Go plugin system
@@ -417,6 +482,10 @@ trusty/
 │   │   └── ollama.go               # Local inference
 │   └── types/                      # Shared types
 │       └── types.go
+├── Dockerfile                      # Multi-stage build
+├── helm/trusty/                    # Helm chart
+│   ├── Chart.yaml, values.yaml
+│   └── templates/                  # deployment.yaml, service.yaml
 ├── .gitlab-ci.yml                  # GitLab CI template
 ├── vscode-trusty/                  # VS Code extension scaffolding
 │   ├── package.json

@@ -9,11 +9,14 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/WorldOccupier/trusty/internal/audit"
 	"github.com/WorldOccupier/trusty/internal/config"
+	"github.com/WorldOccupier/trusty/internal/dashboard"
 	"github.com/WorldOccupier/trusty/internal/llm"
 	"github.com/WorldOccupier/trusty/internal/policy"
 	"github.com/WorldOccupier/trusty/internal/prcomment"
 	"github.com/WorldOccupier/trusty/internal/report"
+	"github.com/WorldOccupier/trusty/internal/sbom"
 	"github.com/WorldOccupier/trusty/internal/scanner"
 	"github.com/WorldOccupier/trusty/internal/tui"
 	"github.com/WorldOccupier/trusty/internal/types"
@@ -305,6 +308,73 @@ Examples:
 		RunE: runTUI,
 	}
 
+	auditCmd := &cobra.Command{
+		Use:   "audit",
+		Short: "View scan audit trail",
+		Long: `Display the scan audit trail with historical results.
+Stored in .trusty-audit.jsonl (append-only JSONL format).
+
+Examples:
+  trusty audit                          # Show recent audit entries
+  trusty audit --limit 50               # Show last 50 entries
+  trusty audit --status failed           # Filter by status
+  trusty audit --since 2026-01-01       # Entries since date
+  trusty audit --json                   # Output as JSON`,
+		RunE: runAudit,
+	}
+	auditCmd.Flags().Int("limit", 20, "Number of entries to show")
+	auditCmd.Flags().String("status", "", "Filter by status (clean, warning, failed)")
+	auditCmd.Flags().String("since", "", "Show entries since date (RFC3339)")
+	auditCmd.Flags().Bool("json", false, "Output as JSON")
+
+	sbomCmd := &cobra.Command{
+		Use:   "sbom",
+		Short: "Generate software bill of materials",
+		Long: `Generate a CycloneDX SBOM from Go module dependencies.
+Scans go.mod files in the workspace.
+
+Examples:
+  trusty sbom                           # Generate SBOM for root module
+  trusty sbom --all                     # Generate SBOM for all modules
+  trusty sbom --output bom.json         # Write to file`,
+		RunE: runSBOM,
+	}
+	sbomCmd.Flags().Bool("all", false, "Scan all Go modules in workspace")
+	sbomCmd.Flags().StringP("output", "o", "", "Write output to file")
+
+	policyCheckCmd := &cobra.Command{
+		Use:   "policy",
+		Short: "Evaluate YAML/OPA policies against findings",
+		Long: `Evaluate verification policies against scan findings.
+Supports YAML-based policies with conditions on severity,
+rule, and category fields.
+
+Examples:
+  trusty policy --policy policy.yml     # Evaluate YAML policy
+  trusty policy --policy policy.rego --opa  # Evaluate via OPA
+  trusty scan --output findings.json
+  trusty policy --policy policy.yml --input findings.json`,
+		RunE: runPolicyCheck,
+	}
+	policyCheckCmd.Flags().StringP("policy", "p", "policy.yml", "Path to policy file (.yml or .rego)")
+	policyCheckCmd.Flags().String("input", "", "Input findings JSON file (default: use live scan)")
+	policyCheckCmd.Flags().Bool("opa", false, "Use OPA binary to evaluate Rego policies")
+
+	dashboardCmd := &cobra.Command{
+		Use:   "dashboard",
+		Short: "Generate HTML dashboard from audit data",
+		Long: `Generate a self-contained HTML dashboard with score trends
+and scan history. Reads from .trusty-audit.jsonl.
+
+Examples:
+  trusty dashboard                      # Generate HTML dashboard
+  trusty dashboard --output dashboard.html
+  trusty dashboard --json               # Output data as JSON`,
+		RunE: runDashboard,
+	}
+	dashboardCmd.Flags().StringP("output", "o", "trusty-dashboard.html", "Output file path")
+	dashboardCmd.Flags().Bool("json", false, "Output data as JSON")
+
 	root.AddCommand(scanCmd)
 	root.AddCommand(halluCmd)
 	root.AddCommand(reportCmd)
@@ -318,6 +388,10 @@ Examples:
 	root.AddCommand(watchCmd)
 	root.AddCommand(prCommentCmd)
 	root.AddCommand(tuiCmd)
+	root.AddCommand(auditCmd)
+	root.AddCommand(sbomCmd)
+	root.AddCommand(policyCheckCmd)
+	root.AddCommand(dashboardCmd)
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -1095,4 +1169,188 @@ func runTUI(cmd *cobra.Command, args []string) error {
 	}
 
 	return tui.Run(s, diffOpts)
+}
+
+func runAudit(cmd *cobra.Command, args []string) error {
+	limit, _ := cmd.Flags().GetInt("limit")
+	status, _ := cmd.Flags().GetString("status")
+	since, _ := cmd.Flags().GetString("since")
+	asJSON, _ := cmd.Flags().GetBool("json")
+
+	trail := audit.New(".trusty-audit.jsonl")
+	entries, err := trail.Query(limit, status, since)
+	if err != nil {
+		return fmt.Errorf("reading audit trail: %w", err)
+	}
+
+	if entries == nil {
+		fmt.Println("No audit entries found. Run trusty scan --track first.")
+		return nil
+	}
+
+	if asJSON {
+		data, _ := json.MarshalIndent(entries, "", "  ")
+		fmt.Println(string(data))
+		return nil
+	}
+
+	fmt.Printf("\n%-30s %-20s %-12s %-10s %-8s %s\n",
+		"Timestamp", "User", "Command", "Score", "Issues", "Status")
+	fmt.Println(strings.Repeat("-", 90))
+	for _, e := range entries {
+		fmt.Printf("%-30s %-20s %-12s %-10d %-8d %s\n",
+			e.Timestamp, e.User, e.Command, e.TrustScore, e.TotalIssues, e.Status)
+	}
+	fmt.Printf("\n%d entries\n", len(entries))
+	return nil
+}
+
+func runSBOM(cmd *cobra.Command, args []string) error {
+	allMods, _ := cmd.Flags().GetBool("all")
+	outPath, _ := cmd.Flags().GetString("output")
+
+	if allMods {
+		mods, err := sbom.FindGoMods(".")
+		if err != nil {
+			return fmt.Errorf("finding go.mod files: %w", err)
+		}
+		if len(mods) == 0 {
+			return fmt.Errorf("no go.mod files found")
+		}
+		type moduleSBOM struct {
+			Path string `json:"path"`
+			BOM  json.RawMessage `json:"bom"`
+		}
+		var results []moduleSBOM
+		for _, mod := range mods {
+			data, err := sbom.GenerateGoSBOM(filepath.Dir(mod))
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: skipping %s: %v\n", mod, err)
+				continue
+			}
+			results = append(results, moduleSBOM{
+				Path: mod,
+				BOM:  data,
+			})
+		}
+		output, _ := json.MarshalIndent(results, "", "  ")
+		if outPath != "" {
+			return os.WriteFile(filepath.Clean(outPath), output, 0644)
+		}
+		fmt.Println(string(output))
+		return nil
+	}
+
+	data, err := sbom.GenerateGoSBOM(".")
+	if err != nil {
+		// Try go.sum fallback
+		data2, err2 := sbom.GenerateFromGoSum("go.sum")
+		if err2 != nil {
+			return fmt.Errorf("generating SBOM (tried go.mod: %v, go.sum: %v)", err, err2)
+		}
+		data = data2
+	}
+
+	if outPath != "" {
+		return os.WriteFile(filepath.Clean(outPath), data, 0644)
+	}
+	fmt.Println(string(data))
+	return nil
+}
+
+func runPolicyCheck(cmd *cobra.Command, args []string) error {
+	policyPath, _ := cmd.Flags().GetString("policy")
+	inputPath, _ := cmd.Flags().GetString("input")
+	useOPA, _ := cmd.Flags().GetBool("opa")
+
+	var findings []types.Finding
+
+	if inputPath != "" {
+		data, err := os.ReadFile(filepath.Clean(inputPath))
+		if err != nil {
+			return fmt.Errorf("reading input: %w", err)
+		}
+		var scanResult types.ScanResult
+		if err := json.Unmarshal(data, &scanResult); err != nil {
+			var findingsOnly []types.Finding
+			if err2 := json.Unmarshal(data, &findingsOnly); err2 != nil {
+				return fmt.Errorf("parsing input (tried result: %v, findings: %v)", err, err2)
+			}
+			findings = findingsOnly
+		} else {
+			for _, f := range scanResult.Files {
+				findings = append(findings, f.Findings...)
+			}
+		}
+	} else {
+		cfg, err := loadConfig()
+		if err != nil {
+			return err
+		}
+		s := scanner.NewScanner(cfg, nil)
+		diffOpts := types.DiffOptions{Staged: staged, From: from, To: to, Base: base, Head: head}
+		result, err := s.Scan(context.Background(), diffOpts)
+		s.FlushCache()
+		if err != nil {
+			return fmt.Errorf("scan failed: %w", err)
+		}
+		for _, f := range result.Files {
+			findings = append(findings, f.Findings...)
+		}
+	}
+
+	if useOPA {
+		result, err := policy.EvaluateViaOPA(policyPath, findings)
+		if err != nil {
+			return fmt.Errorf("OPA evaluation: %w", err)
+		}
+		fmt.Println(result)
+		return nil
+	}
+
+	policies, err := policy.LoadPolicies(policyPath)
+	if err != nil {
+		// Try alternate paths
+		policies, err = policy.LoadPolicies("policy.yml")
+		if err != nil {
+			return fmt.Errorf("loading policies from %s (tried policy.yml): %w", policyPath, err)
+		}
+	}
+
+	violations := policy.Evaluate(findings, policies)
+	output := map[string]interface{}{
+		"findings_count":   len(findings),
+		"policies_count":   len(policies),
+		"violations_count": len(violations),
+		"violations":       violations,
+	}
+
+	data, _ := json.MarshalIndent(output, "", "  ")
+	fmt.Println(string(data))
+
+	if len(violations) > 0 {
+		os.Exit(1)
+	}
+	return nil
+}
+
+func runDashboard(cmd *cobra.Command, args []string) error {
+	outPath, _ := cmd.Flags().GetString("output")
+	asJSON, _ := cmd.Flags().GetBool("json")
+
+	if asJSON {
+		data, err := dashboard.WriteJSON(".trusty-audit.jsonl")
+		if err != nil {
+			return fmt.Errorf("generating dashboard JSON: %w", err)
+		}
+		fmt.Println(data)
+		return nil
+	}
+
+	if err := dashboard.WriteToFile(".trusty-audit.jsonl", outPath); err != nil {
+		return fmt.Errorf("generating dashboard: %w", err)
+	}
+
+	fmt.Printf("Dashboard written to %s\n", outPath)
+	return nil
 }

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: trusty
+description: Trusty AI Code Verification CLI — on-prem deployment
+type: application
+version: 0.1.0
+appVersion: "latest"

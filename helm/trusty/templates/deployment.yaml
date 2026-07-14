@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "trusty.fullname" . }}
+  labels:
+    app: trusty
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app: trusty
+  template:
+    metadata:
+      labels:
+        app: trusty
+    spec:
+      containers:
+        - name: trusty
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["trusty", "scan", "--watch"]
+          env:
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: trusty-secrets
+                  key: openai_api_key
+                  optional: true
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: trusty-secrets
+                  key: anthropic_api_key
+                  optional: true
+            - name: CI
+              value: "true"
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+            - name: config
+              mountPath: /workspace/.trusty.yml
+              subPath: .trusty.yml
+      volumes:
+        - name: workspace
+          persistentVolumeClaim:
+            claimName: trusty-workspace
+        - name: config
+          configMap:
+            name: trusty-config

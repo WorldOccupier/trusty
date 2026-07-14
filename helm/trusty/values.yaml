@@ -1,0 +1,36 @@
+image:
+  repository: ghcr.io/worldoccupier/trusty
+  tag: latest
+  pullPolicy: Always
+
+replicas: 1
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 64Mi
+
+persistence:
+  enabled: true
+  size: 1Gi
+
+config:
+  minScore: 70
+  provider: openai
+  model: gpt-4o
+
+env:
+  OPENAI_API_KEY: ""
+  ANTHROPIC_API_KEY: ""
+  GITHUB_TOKEN: ""
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+  host: trusty.example.com
