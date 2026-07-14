@@ -3,6 +3,8 @@ package scanner
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -217,6 +219,52 @@ func (s *Scanner) SetCacheEnabled(enabled bool) {
 func (s *Scanner) FlushCache() {
 	s.cache.Flush()
 }
+
+type PackageResult struct {
+	Path   string            `json:"path"`
+	Result *types.ScanResult `json:"result"`
+	Error  string            `json:"error,omitempty"`
+}
+
+func (s *Scanner) ScanAllPackages(ctx context.Context, opts types.DiffOptions) ([]PackageResult, error) {
+	entries, err := osReadDir(".")
+	if err != nil {
+		return nil, fmt.Errorf("reading root dir: %w", err)
+	}
+
+	var results []PackageResult
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		if stringsHasPrefix(entry.Name(), ".") || entry.Name() == "vendor" || entry.Name() == "node_modules" {
+			continue
+		}
+
+		goModPath := entry.Name() + "/go.mod"
+		if _, err := osStat(goModPath); err != nil {
+			continue
+		}
+
+		pkgOpts := opts
+		pkgOpts.Path = entry.Name()
+
+		result, scanErr := s.Scan(ctx, pkgOpts)
+		pr := PackageResult{Path: entry.Name()}
+		if scanErr != nil {
+			pr.Error = scanErr.Error()
+		} else {
+			pr.Result = result
+		}
+		results = append(results, pr)
+	}
+
+	return results, nil
+}
+
+var osReadDir = os.ReadDir
+var osStat = os.Stat
+var stringsHasPrefix = strings.HasPrefix
 
 func calculateScore(findings []types.Finding) int {
 	if len(findings) == 0 {

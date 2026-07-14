@@ -53,27 +53,27 @@ trusty init
 - [x] **Fuzz testing** — Property-based fuzz testing with random input generation for exported Go functions
 - [x] **Intent extraction** — Parse commit messages and code context via LLM; flag mismatches between described intent and implementation
 
-### Phase 3 — Integration & UX (In Progress)
+### Phase 3 — Integration & UX (Implemented)
 
 - [x] **GitHub Actions integration** — Composite action that gates PR merges based on trust score
 - [x] **HTML report** — Beautiful, shareable HTML report with score bar and per-file findings
 - [x] **Watch mode** — `trusty watch` — auto-scan on file change with fsnotify
 - [x] **File-based diff input** — `scan --diff-file` accepts a pre-generated diff instead of reading from git
 - [x] **Shell completions** — `trusty completion bash|zsh|fish|powershell` (cobra built-in)
-- [ ] **GitLab CI integration** — Merge request decoration with findings
-- [ ] **GitHub PR commenting** — Auto-comment on PRs with per-file findings and suggestions
-- [ ] **TUI mode** — Interactive terminal UI (Bubble Tea) for browsing findings, applying fixes, and exploring scan results
-- [ ] **VS Code extension** — Inline diagnostics via LSP protocol
+- [x] **GitLab CI integration** — `.gitlab-ci.yml` template with SARIF artifact output
+- [x] **GitHub PR commenting** — `trusty pr-comment` posts formatted findings to PR via GitHub API
+- [x] **TUI mode** — `trusty tui` — interactive Bubble Tea TUI for browsing findings per file
+- [x] **VS Code extension** — `vscode-trusty/` extension scaffolding with file scan and diagnostic display
 
-### Phase 4 — Advanced (In Progress)
+### Phase 4 — Advanced (Implemented)
 
 - [x] **AI-code fingerprinting** — Statistical detection of AI-generated code patterns (8 weighted signals, 0–100 score)
 - [x] **Incremental cache** — Skip re-analysis of unchanged files via SHA256 content hash; `.trusty-cache.json`
 - [x] **Multi-model LLM** — OpenAI, Anthropic Claude, local Ollama
-- [ ] **Regression tracking** — Track trust scores across commits/branches; alert when score drops
-- [ ] **Team policies** — Organization-wide `.trusty.yml` with enforced rules, minimum scores per repo/team
-- [ ] **Distributed scan** — Parallel scanning across packages/microservices
-- [ ] **Plugin system** — Lua or Go plugin API for custom checkers
+- [x] **Regression tracking** — `scan --track` stores score history in `.trusty-history.json`, alerts on regressions
+- [x] **Team policies** — `scan --policy-file` / `--policy-url` overlays team-wide YAML policy on local config
+- [x] **Distributed scan** — `scan --all-packages` discovers Go modules and runs scan per package
+- [x] **Plugin system** — `internal/plugin/` Go plugin interface (`Checker`) + `.so` loader via `plugin.Open()`
 
 ### Phase 5 — Enterprise
 
@@ -337,6 +337,40 @@ trusty completion zsh > /usr/local/share/zsh/site-functions/_trusty
 trusty completion fish > ~/.config/fish/completions/trusty.fish
 ```
 
+### `trusty pr-comment`
+
+```bash
+# Post scan results as a GitHub PR comment (requires GITHUB_TOKEN, GITHUB_REPOSITORY, GITHUB_PR_NUMBER)
+trusty scan --output results.json
+trusty pr-comment results.json
+```
+
+### `trusty tui`
+
+```bash
+# Launch interactive TUI with a fresh scan
+trusty tui
+
+# Browse existing scan results
+trusty tui results.json
+```
+
+### `trusty scan` (extended flags)
+
+```bash
+# Track regression history
+trusty scan --track
+
+# Scan all Go modules in workspace
+trusty scan --all-packages
+
+# Overlay team policy from file
+trusty scan --policy-file ./team-policy.yml
+
+# Overlay team policy from URL
+trusty scan --policy-url https://example.com/org-policy.yml
+```
+
 ## Architecture
 
 ```
@@ -344,7 +378,7 @@ trusty/
 ├── cmd/trusty/main.go              # CLI entry point (cobra)
 ├── internal/
 │   ├── scanner/                    # Core 3-tier scan engine
-│   │   ├── scanner.go              # Orchestrator
+│   │   ├── scanner.go              # Orchestrator + ScanAllPackages
 │   │   ├── diff.go                 # Git diff parsing + ParseDiffContent
 │   │   ├── static.go               # Tier 1: AST analysis
 │   │   ├── semantic.go             # Tier 2: LLM-based analysis
@@ -356,17 +390,26 @@ trusty/
 │   │   ├── fingerprint.go          # AI-code fingerprinting (8 signals)
 │   │   ├── intent.go               # LLM-based intent verification
 │   │   ├── cache.go                # Incremental SHA256 content-hash cache
+│   │   ├── regression.go           # Regression tracking (.trusty-history.json)
 │   │   └── watch.go                # Fsnotify file watcher
 │   ├── hallucination/              # Hallucination detection
 │   │   ├── detector.go             # Detection logic
 │   │   └── registry.go             # Package registry client
 │   ├── report/                     # Output formatting
-│   │   ├── json.go                 # JSON output
+│   │   ├── json.go                 # JSON output + ParseResult
 │   │   ├── sarif.go                # SARIF v2.1.0 output
 │   │   ├── html.go                 # HTML report generation
 │   │   └── score.go                # Trust score models
 │   ├── config/                     # .trusty.yml parsing
 │   │   └── config.go
+│   ├── policy/                     # Team policy overlay
+│   │   └── policy.go
+│   ├── prcomment/                  # GitHub PR comment posting
+│   │   └── github.go
+│   ├── plugin/                     # Go plugin system
+│   │   └── plugin.go
+│   ├── tui/                        # Bubble Tea TUI
+│   │   └── tui.go
 │   ├── llm/                        # LLM provider abstraction
 │   │   ├── provider.go             # Interface + factory
 │   │   ├── openai.go               # OpenAI GPT-4o
@@ -374,6 +417,10 @@ trusty/
 │   │   └── ollama.go               # Local inference
 │   └── types/                      # Shared types
 │       └── types.go
+├── .gitlab-ci.yml                  # GitLab CI template
+├── vscode-trusty/                  # VS Code extension scaffolding
+│   ├── package.json
+│   └── extension.js
 ├── .github/actions/trusty/         # GitHub Action
 ├── go.mod
 └── README.md

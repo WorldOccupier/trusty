@@ -1,0 +1,19 @@
+stages:
+  - verify
+
+trusty-scan:
+  stage: verify
+  image: golang:1.23-alpine
+  variables:
+    TRUSTY_VERSION: latest
+  before_script:
+    - go install github.com/WorldOccupier/trusty/cmd/trusty@${TRUSTY_VERSION}
+    - apk add --no-cache git
+  script:
+    - trusty scan --base origin/main --head HEAD --format sarif --min-score 70
+  artifacts:
+    reports:
+      sarif: trusty.sarif
+    when: always
+  only:
+    - merge_requests

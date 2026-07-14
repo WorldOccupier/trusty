@@ -11,10 +11,10 @@ go run ./cmd/trusty/    # Run the CLI
 ## Project Structure
 
 ```
-cmd/trusty/main.go    — CLI entry point (cobra). All 10 commands defined here.
+cmd/trusty/main.go    — CLI entry point (cobra). All 15 commands defined here.
 internal/
   scanner/            — Core scan engines
-    scanner.go        — Orchestrator (3 tiers + security + logic + cache)
+    scanner.go        — Orchestrator (3 tiers + security + logic + cache + regression)
     diff.go           — Git diff parsing
     static.go         — Tier 1: AST-based static analysis
     semantic.go       — Tier 2: LLM-based semantic analysis
@@ -26,8 +26,9 @@ internal/
     fingerprint.go    — AI-code fingerprinting (statistical pattern analysis)
     intent.go         — Intent extraction (LLM-based commit/code mismatch detection)
     cache.go          — Incremental content-hash cache (.trusty-cache.json)
+    regression.go     — Regression tracking (.trusty-history.json)
     watch.go          — Fsnotify-based file watcher
-  hallucination/      — Hallucinated import detection (Go/npm/PyPI registries)
+  hallucination/      — Hallucination import detection (Go/npm/PyPI registries)
   report/             — Output formatting
     json.go, sarif.go, html.go, score.go
   config/             — .trusty.yml parsing
@@ -35,8 +36,19 @@ internal/
   llm/                — LLM provider abstraction
     provider.go       — Interface + factory (openai, anthropic, ollama)
     openai.go, anthropic.go, ollama.go
+  policy/             — Team policy overlay (file/URL)
+    policy.go
+  prcomment/          — GitHub PR comment posting
+    github.go
+  plugin/             — Plugin system (Checker interface + .so loader)
+    plugin.go
+  tui/                — Bubble Tea TUI for browsing findings
+    tui.go
   types/              — Shared type definitions
     types.go
+.gitlab-ci.yml            — GitLab CI template
+vscode-trusty/            — VS Code extension scaffolding
+  package.json, extension.js
 .github/actions/trusty/  — GitHub composite action
 ```
 
@@ -44,7 +56,7 @@ internal/
 
 | Command       | Description | Key Flags |
 |---------------|-------------|-----------|
-| `scan`        | 3-tier scan (static + LLM + behavioral) | `--staged, --from, --to, --base, --head, --format, --output, --min-score, --no-cache, --diff-file` |
+| `scan`        | 3-tier scan (static + LLM + behavioral) | `--staged, --from, --to, --base, --head, --format, --output, --min-score, --no-cache, --diff-file, --track, --all-packages, --policy-file, --policy-url` |
 | `hallu`       | Hallucinated import detection | `--staged, --from, --to, --output` |
 | `report`      | Generate report (json/sarif/html) | `--format, --min-score, --staged, --output` |
 | `security`    | Vulnerability scan | `--staged, --from, --to, --min-severity, --output` |
@@ -55,6 +67,8 @@ internal/
 | `intent`      | Intent verification via LLM | `--staged, --from, --to` |
 | `watch`       | Auto-scan on file change | `[dirs...]` |
 | `init`        | Scaffold .trusty.yml | (none) |
+| `pr-comment`  | Post results as GitHub PR comment | `<file.json>` |
+| `tui`         | Interactive TUI for findings | `[file.json]` |
 | `completion`  | Shell completions (bash/zsh/fish) | (cobra built-in) |
 
 **Exit codes**: All detection commands exit 1 when findings are present (not just below score threshold). Use for CI gating.
@@ -100,6 +114,12 @@ output:
 - **Diff file**: `scan --diff-file` accepts a pre-generated git diff from file/stdin, bypassing git repo dependency. `ParseDiffContent()` in `diff.go` is the exported parser.
 - **Output file**: `--output` / `-o` flag on `scan`, `report`, `security`, `logic`, `hallu` writes JSON output to a file instead of stdout. `scan --format html --output report.html` also works.
 - **Shell completions**: available natively via cobra: `trusty completion bash | source`
+- **Regression tracking**: `scan --track` stores score history in `.trusty-history.json` and prints deltas between runs.
+- **Team policies**: `scan --policy-file` / `--policy-url` overlays a YAML policy (min_score) on top of local config.
+- **Distributed scan**: `scan --all-packages` discovers Go modules in subdirectories and runs scan per package.
+- **Plugin system**: `internal/plugin/` provides a `Checker` interface (`Name()` + `Check(file)`) and a Go plugin loader via `plugin.Open()`.
+- **PR commenting**: `pr-comment <file.json>` posts formatted scan results as a GitHub PR comment via API.
+- **TUI mode**: `trusty tui` launches a Bubble Tea terminal UI for browsing findings per file.
 
 ## Module Path
 

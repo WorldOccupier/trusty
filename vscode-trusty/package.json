@@ -1,0 +1,41 @@
+{
+  "name": "trusty-vscode",
+  "displayName": "Trusty AI Code Verification",
+  "description": "Inline diagnostics and scan results from Trusty AI Code Verification CLI",
+  "version": "0.1.0",
+  "publisher": "trusty",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Linters", "Programming Languages"],
+  "activationEvents": ["onLanguage:go", "onLanguage:python", "onLanguage:typescript", "onLanguage:javascript"],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "trusty.scan",
+        "title": "Trusty: Scan Current File"
+      },
+      {
+        "command": "trusty.scanAll",
+        "title": "Trusty: Scan All Changed Files"
+      }
+    ],
+    "configuration": {
+      "title": "Trusty",
+      "properties": {
+        "trusty.minScore": {
+          "type": "number",
+          "default": 70,
+          "description": "Minimum trust score threshold"
+        },
+        "trusty.cliPath": {
+          "type": "string",
+          "default": "trusty",
+          "description": "Path to trusty CLI binary"
+        }
+      }
+    }
+  }
+}

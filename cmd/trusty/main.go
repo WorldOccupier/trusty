@@ -11,8 +11,11 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/WorldOccupier/trusty/internal/config"
 	"github.com/WorldOccupier/trusty/internal/llm"
+	"github.com/WorldOccupier/trusty/internal/policy"
+	"github.com/WorldOccupier/trusty/internal/prcomment"
 	"github.com/WorldOccupier/trusty/internal/report"
 	"github.com/WorldOccupier/trusty/internal/scanner"
+	"github.com/WorldOccupier/trusty/internal/tui"
 	"github.com/WorldOccupier/trusty/internal/types"
 )
 
@@ -33,6 +36,10 @@ var (
 	fingerprintAll  bool
 	outFile         string
 	diffFile        string
+	trackRegression bool
+	allPackages     bool
+	policyFile      string
+	policyURL       string
 )
 
 func main() {
@@ -91,6 +98,10 @@ Examples:
 	scanCmd.Flags().BoolVar(&noCache, "no-cache", false, "Disable incremental cache")
 	scanCmd.Flags().StringVarP(&outFile, "output", "o", "", "Write output to file")
 	scanCmd.Flags().StringVar(&diffFile, "diff-file", "", "Read diff from file instead of git")
+	scanCmd.Flags().BoolVar(&trackRegression, "track", false, "Track regression history in .trusty-history.json")
+	scanCmd.Flags().BoolVar(&allPackages, "all-packages", false, "Scan all Go modules in workspace")
+	scanCmd.Flags().StringVar(&policyFile, "policy-file", "", "Path to team policy YAML overlay")
+	scanCmd.Flags().StringVar(&policyURL, "policy-url", "", "URL to team policy YAML overlay")
 
 	halluCmd := &cobra.Command{
 		Use:   "hallu",
@@ -269,6 +280,31 @@ Examples:
 		RunE: runWatch,
 	}
 
+	prCommentCmd := &cobra.Command{
+		Use:   "pr-comment",
+		Short: "Post scan results as a GitHub PR comment",
+		Long: `Read a scan result JSON file and post a formatted comment
+to the GitHub PR specified by the GITHUB_TOKEN, GITHUB_REPOSITORY,
+and GITHUB_PR_NUMBER environment variables.
+
+Examples:
+  trusty scan --output results.json
+  trusty pr-comment results.json`,
+		RunE: runPRComment,
+	}
+
+	tuiCmd := &cobra.Command{
+		Use:   "tui",
+		Short: "Interactive TUI for browsing scan results",
+		Long: `Launch a terminal UI to browse scan results from a file
+or run a fresh scan interactively.
+
+Examples:
+  trusty tui                          # Launch TUI with live scan
+  trusty tui results.json             # Browse existing results`,
+		RunE: runTUI,
+	}
+
 	root.AddCommand(scanCmd)
 	root.AddCommand(halluCmd)
 	root.AddCommand(reportCmd)
@@ -280,6 +316,8 @@ Examples:
 	root.AddCommand(initCmd)
 	root.AddCommand(fingerprintCmd)
 	root.AddCommand(watchCmd)
+	root.AddCommand(prCommentCmd)
+	root.AddCommand(tuiCmd)
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -614,6 +652,21 @@ func runScan(cmd *cobra.Command, args []string) error {
 		s.SetCacheEnabled(false)
 	}
 
+	if policyFile != "" {
+		p, err := policy.LoadFromFile(policyFile)
+		if err != nil {
+			return fmt.Errorf("loading policy file: %w", err)
+		}
+		policy.Apply(cfg, p)
+	}
+	if policyURL != "" {
+		p, err := policy.LoadFromURL(policyURL)
+		if err != nil {
+			return fmt.Errorf("loading policy URL: %w", err)
+		}
+		policy.Apply(cfg, p)
+	}
+
 	diffOpts := types.DiffOptions{
 		Staged: staged,
 		From:   from,
@@ -630,10 +683,44 @@ func runScan(cmd *cobra.Command, args []string) error {
 		diffOpts.RawDiff = string(raw)
 	}
 
-	result, err := s.Scan(context.Background(), diffOpts)
+	var result *types.ScanResult
+	if allPackages {
+		results, err := s.ScanAllPackages(context.Background(), diffOpts)
+		s.FlushCache()
+		if err != nil {
+			return fmt.Errorf("scan failed: %w", err)
+		}
+		data, _ := json.MarshalIndent(results, "", "  ")
+		if err := writeOutput(data, outFile); err != nil {
+			return err
+		}
+		for _, pkg := range results {
+			if pkg.Error != "" {
+				fmt.Fprintf(os.Stderr, "[ERROR] %s: %s\n", pkg.Path, pkg.Error)
+			} else if pkg.Result != nil && pkg.Result.Summary.TotalIssues > 0 {
+				fmt.Fprintf(os.Stderr, "[WARN] %s: %d issue(s), score %d/100\n",
+					pkg.Path, pkg.Result.Summary.TotalIssues, pkg.Result.TrustScore)
+			}
+		}
+		return nil
+	}
+
+	var scanErr error
+	result, scanErr = s.Scan(context.Background(), diffOpts)
 	s.FlushCache()
-	if err != nil {
-		return fmt.Errorf("scan failed: %w", err)
+	if scanErr != nil {
+		return fmt.Errorf("scan failed: %w", scanErr)
+	}
+
+	if trackRegression {
+		hist := scanner.LoadHistory(".trusty-history.json")
+		entry := hist.Record(result.TrustScore, result.Summary.TotalIssues, result.Summary.Errors, result.Summary.Warnings, result.Summary.Info, result.Summary.FilesScanned)
+		if err := hist.Save(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to save regression history: %v\n", err)
+		}
+		if delta := hist.Compare(entry); delta != "" {
+			fmt.Fprintf(os.Stderr, "Regression: %s\n", delta)
+		}
 	}
 
 	reporter := report.New()
@@ -953,4 +1040,59 @@ func runWatch(cmd *cobra.Command, args []string) error {
 	defer cancel()
 
 	return w.Watch(ctx)
+}
+
+func runPRComment(cmd *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: trusty pr-comment <scan-result.json>")
+	}
+
+	data, err := os.ReadFile(filepath.Clean(args[0]))
+	if err != nil {
+		return fmt.Errorf("reading scan result: %w", err)
+	}
+
+	client := prcomment.New()
+	body := prcomment.BuildCommentBody(data)
+
+	if err := client.Post(body); err != nil {
+		return fmt.Errorf("posting PR comment: %w", err)
+	}
+
+	fmt.Println("PR comment posted successfully.")
+	return nil
+}
+
+func runTUI(cmd *cobra.Command, args []string) error {
+	if len(args) > 0 {
+		return tui.RunFromFile(args[0])
+	}
+
+	cfg, err := loadConfig()
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+
+	var llmProvider llm.Provider
+	if cfg.LLM.APIKey != "" {
+		llmCfg := llm.ProviderConfig{
+			Model:       cfg.LLM.Model,
+			Temperature: cfg.LLM.Temperature,
+			APIKey:      cfg.LLM.APIKey,
+			BaseURL:     cfg.LLM.BaseURL,
+		}
+		llmProvider = llm.NewProvider(cfg.LLM.Provider, llmCfg)
+	}
+
+	s := scanner.NewScanner(cfg, llmProvider)
+
+	diffOpts := types.DiffOptions{
+		Staged: staged,
+		From:   from,
+		To:     to,
+		Base:   base,
+		Head:   head,
+	}
+
+	return tui.Run(s, diffOpts)
 }
