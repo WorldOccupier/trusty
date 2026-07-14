@@ -22,6 +22,7 @@ type Scanner struct {
 	verify   *VerificationEngine
 	security *SecurityScanner
 	logic    *LogicDetector
+	ast      *DeepASTAnalyzer
 	cache    *ScanCache
 }
 
@@ -34,6 +35,7 @@ func NewScanner(cfg *config.Config, llmProvider llm.Provider) *Scanner {
 		verify:   NewVerificationEngine(),
 		security: NewSecurityScanner(),
 		logic:    NewLogicDetector(),
+		ast:      NewDeepASTAnalyzer(),
 		cache:    NewScanCache(""),
 	}
 }
@@ -98,6 +100,11 @@ func (s *Scanner) Scan(ctx context.Context, opts types.DiffOptions) (*types.Scan
 			if enabledTiers[1] {
 				staticFindings := s.static.Analyze(f.Path, f.Content)
 				findings = append(findings, staticFindings...)
+
+				if s.ast != nil {
+					astFindings := s.ast.Analyze(f.Path, f.Content)
+					findings = append(findings, astFindings...)
+				}
 
 				if s.hallu != nil {
 					halluFindings := s.hallu.Detect(f.Path, f.Content, f.Diff)

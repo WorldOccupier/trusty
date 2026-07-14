@@ -26,3 +26,8 @@ Thumbs.db
 
 # Dependencies
 vendor/
+
+# Trusty runtime files
+.trusty-cache.json
+.trusty-history.json
+.trusty-audit.jsonl

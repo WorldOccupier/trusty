@@ -38,12 +38,12 @@ trusty init
 
 ### Phase 1 — Core Engine (Implemented)
 
-- `scan` — Git diff analysis with 3-tier verification engine
-- `hallu` — AI hallucination detection (fake imports, non-existent APIs)
-- `report` — Structured output with SARIF, JSON, HTML, and trust scoring
-- `init` — Scaffold `.trusty.yml` config file
-- Config file (`.trusty.yml`) with rules, severity, exclusions
-- Multi-language support (Go, Python, JavaScript/TypeScript)
+- [x] `scan` — Git diff analysis with 3-tier verification engine
+- [x] `hallu` — AI hallucination detection (fake imports, non-existent APIs)
+- [x] `report` — Structured output with SARIF, JSON, HTML, and trust scoring
+- [x] `init` — Scaffold `.trusty.yml` config file
+- [x] Config file (`.trusty.yml`) with rules, severity, exclusions
+- [x] Multi-language support (Go, Python, JavaScript/TypeScript)
 
 ### Phase 2 — Semantic Analysis (Implemented)
 
@@ -83,6 +83,18 @@ trusty init
 - [x] **Dashboard** — `trusty dashboard` — Self-contained HTML dashboard with Chart.js score trends and scan history
 - [x] **SSO/SAML** — `internal/sso/` — Config struct + middleware for OIDC, SAML, GitHub, Google providers
 - [x] **On-prem deployment** — Multi-stage Dockerfile + Helm chart (deployment, service, config, secrets)
+
+### Phase 6 — Next Gen (In Progress)
+
+- [x] **Deep Go AST analysis** — Full `go/ast`-based analysis with type checking, nil safety, bounds checking, and error handling verification
+- [x] **Auto-fix** — `trusty fix` — Apply fix suggestions from findings directly to source files with interactive preview
+- [x] **Scan comparison** — `trusty compare` — Diff between two scan result JSON files; show new, fixed, and unchanged findings
+- [x] **Self-update** — `trusty upgrade` — Check latest GitHub release and update binary automatically
+- [x] **Live web server** — `trusty web` — Real-time dashboard server with SSE and REST API
+- [x] **Pre-commit hook** — `trusty install-hook` — Install pre-commit/pre-push git hooks that auto-scan staged changes
+- [x] **Auto-merge gate** — `trusty merge` — Combined scan + policy + regression check as a single CI merge gate
+- [ ] **Slack integration** — `trusty slack` — Post scan summaries to Slack channels via webhook
+- [ ] **Jira integration** — `trusty jira` — Create Jira tickets from findings automatically
 
 ## 3-Tier Scan Engine
 
@@ -207,6 +219,22 @@ trusty hallu --from HEAD~1 --to HEAD
 
 # Write results to file
 trusty hallu --output hallu-results.json
+```
+
+### `trusty install-hook`
+
+```bash
+# Install a pre-commit hook that runs trusty scan --staged
+trusty install-hook
+
+# Install a pre-push hook instead
+trusty install-hook --type pre-push
+
+# Force overwrite existing hook
+trusty install-hook --force
+
+# Uninstall a hook
+trusty install-hook --uninstall
 ```
 
 ### `trusty report`
@@ -414,6 +442,35 @@ trusty policy --policy policy.yml --input findings.json
 trusty policy --policy policy.rego --opa
 ```
 
+### `trusty merge`
+
+```bash
+# Run scan + policy + regression as a single merge gate
+trusty merge
+
+# Set minimum trust score
+trusty merge --min-score 80
+
+# Enforce team policy
+trusty merge --policy-file ./team-policy.yml
+
+# Track regression history
+trusty merge --track
+```
+
+### `trusty web`
+
+```bash
+# Start the live web dashboard server
+trusty web
+
+# Custom port
+trusty web --port 9090
+
+# Enable SSO authentication
+trusty web --sso --sso-config sso.yml
+```
+
 ### `trusty dashboard`
 
 ```bash
@@ -469,8 +526,13 @@ trusty/
 │   ├── policy/                     # Team policy overlay + engine
 │   │   ├── policy.go               # Policy overlay (file/URL)
 │   │   └── engine.go               # YAML policy engine + OPA
+│   ├── hook/                       # Pre-commit/pre-push git hook management
+│   │   └── hook.go
+│   ├── merge/                      # Auto-merge gate (scan + policy + regression)
+│   │   └── merge.go
+│   ├── server/                     # Live web dashboard server (SSE + REST API)
+│   │   └── server.go
 │   ├── prcomment/                  # GitHub PR comment posting
-│   │   └── github.go
 │   ├── plugin/                     # Go plugin system
 │   │   └── plugin.go
 │   ├── tui/                        # Bubble Tea TUI

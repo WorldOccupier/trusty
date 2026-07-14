@@ -9,17 +9,25 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 	"github.com/WorldOccupier/trusty/internal/audit"
+	"github.com/WorldOccupier/trusty/internal/compare"
 	"github.com/WorldOccupier/trusty/internal/config"
 	"github.com/WorldOccupier/trusty/internal/dashboard"
+	"github.com/WorldOccupier/trusty/internal/fixer"
+	"github.com/WorldOccupier/trusty/internal/hook"
 	"github.com/WorldOccupier/trusty/internal/llm"
+	"github.com/WorldOccupier/trusty/internal/merge"
 	"github.com/WorldOccupier/trusty/internal/policy"
 	"github.com/WorldOccupier/trusty/internal/prcomment"
 	"github.com/WorldOccupier/trusty/internal/report"
 	"github.com/WorldOccupier/trusty/internal/sbom"
 	"github.com/WorldOccupier/trusty/internal/scanner"
+	"github.com/WorldOccupier/trusty/internal/server"
+	"github.com/WorldOccupier/trusty/internal/sso"
 	"github.com/WorldOccupier/trusty/internal/tui"
 	"github.com/WorldOccupier/trusty/internal/types"
+	"github.com/WorldOccupier/trusty/internal/upgrade"
 )
 
 var (
@@ -375,6 +383,103 @@ Examples:
 	dashboardCmd.Flags().StringP("output", "o", "trusty-dashboard.html", "Output file path")
 	dashboardCmd.Flags().Bool("json", false, "Output data as JSON")
 
+	fixCmd := &cobra.Command{
+		Use:   "fix",
+		Short: "Auto-apply fix suggestions from scan results",
+		Long: `Apply fix suggestions from scan findings directly to source files.
+Supports --dry-run to preview and --interactive to confirm each fix.
+
+Examples:
+  trusty scan --output results.json
+  trusty fix results.json                    # Apply fixes
+  trusty fix results.json --dry-run           # Preview fixes
+  trusty fix results.json --interactive       # Confirm each fix`,
+		RunE: runFix,
+	}
+	fixCmd.Flags().Bool("dry-run", false, "Preview fixes without applying")
+	fixCmd.Flags().BoolP("interactive", "i", false, "Confirm each fix before applying")
+	fixCmd.Flags().String("dir", ".", "Source directory root")
+
+	compareCmd := &cobra.Command{
+		Use:   "compare",
+		Short: "Diff between two scan result files",
+		Long: `Compare two scan result JSON files to show new, fixed,
+and unchanged findings between scans.
+
+Examples:
+  trusty scan --output baseline.json
+  # ... make changes ...
+  trusty scan --output current.json
+  trusty compare baseline.json current.json`,
+		Args: cobra.ExactArgs(2),
+		RunE: runCompare,
+	}
+	compareCmd.Flags().Bool("json", false, "Output as JSON")
+
+	upgradeCmd := &cobra.Command{
+		Use:   "upgrade",
+		Short: "Check for and apply updates",
+		Long: `Check the latest Trusty release on GitHub and upgrade
+the installed binary.
+
+Examples:
+  trusty upgrade              # Check and upgrade
+  trusty upgrade --check      # Only check for newer version`,
+		RunE: runUpgrade,
+	}
+	upgradeCmd.Flags().Bool("check", false, "Only check for newer version, don't upgrade")
+
+	var hookType string
+	installHookCmd := &cobra.Command{
+		Use:   "install-hook",
+		Short: "Install a git hook to auto-scan code changes",
+		Long: `Install a pre-commit or pre-push git hook that runs trusty scan --staged
+before each commit or push.
+
+Examples:
+  trusty install-hook                    # Install pre-commit hook
+  trusty install-hook --type pre-push    # Install pre-push hook
+  trusty install-hook --force            # Overwrite existing hook
+  trusty install-hook --uninstall        # Remove hook`,
+		RunE: runInstallHook,
+	}
+	installHookCmd.Flags().StringVarP(&hookType, "type", "t", "pre-commit", "Hook type: pre-commit, pre-push")
+	installHookCmd.Flags().Bool("force", false, "Overwrite existing hook")
+	installHookCmd.Flags().Bool("uninstall", false, "Remove the hook instead of installing")
+
+	mergeCmd := &cobra.Command{
+		Use:   "merge",
+		Short: "Combined scan + policy + regression CI merge gate",
+		Long: `Run scan, policy checks, and regression tracking as a single
+CI merge gate command. Exits 0 only if all checks pass.
+
+Examples:
+  trusty merge                           # Run all checks
+  trusty merge --min-score 80            # Require minimum score
+  trusty merge --policy-file policy.yml  # Enforce team policy
+  trusty merge --track                   # Check regression history`,
+		RunE: runMerge,
+	}
+	mergeCmd.Flags().IntVarP(&minScore, "min-score", "m", 0, "Minimum trust score (0-100)")
+	mergeCmd.Flags().StringVar(&policyFile, "policy-file", "", "Path to team policy YAML")
+	mergeCmd.Flags().BoolVar(&trackRegression, "track", false, "Check regression history")
+
+	webCmd := &cobra.Command{
+		Use:   "web",
+		Short: "Start live web dashboard server",
+		Long: `Start a persistent HTTP server with a real-time dashboard,
+REST API, and Server-Sent Events for live updates.
+
+Examples:
+  trusty web                          # Start on :8080
+  trusty web --port 9090              # Custom port
+  trusty web --sso                    # Enable SSO authentication`,
+		RunE: runWeb,
+	}
+	webCmd.Flags().Int("port", 8080, "Server port")
+	webCmd.Flags().Bool("sso", false, "Enable SSO authentication")
+	webCmd.Flags().String("sso-config", "", "SSO config file path")
+
 	root.AddCommand(scanCmd)
 	root.AddCommand(halluCmd)
 	root.AddCommand(reportCmd)
@@ -392,6 +497,12 @@ Examples:
 	root.AddCommand(sbomCmd)
 	root.AddCommand(policyCheckCmd)
 	root.AddCommand(dashboardCmd)
+	root.AddCommand(fixCmd)
+	root.AddCommand(compareCmd)
+	root.AddCommand(upgradeCmd)
+	root.AddCommand(installHookCmd)
+	root.AddCommand(mergeCmd)
+	root.AddCommand(webCmd)
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -1353,4 +1464,184 @@ func runDashboard(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("Dashboard written to %s\n", outPath)
 	return nil
+}
+
+func runFix(cmd *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: trusty fix <scan-result.json> [--dry-run] [--interactive]")
+	}
+
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
+	interactive, _ := cmd.Flags().GetBool("interactive")
+	dir, _ := cmd.Flags().GetString("dir")
+
+	f := fixer.New()
+	f.DryRun = dryRun
+	f.Interactive = interactive
+
+	return f.ApplyResultFile(args[0], dir)
+}
+
+func runCompare(cmd *cobra.Command, args []string) error {
+	asJSON, _ := cmd.Flags().GetBool("json")
+
+	baseline, err := compare.LoadResult(args[0])
+	if err != nil {
+		return err
+	}
+	current, err := compare.LoadResult(args[1])
+	if err != nil {
+		return err
+	}
+
+	result := compare.Compare(baseline, current)
+
+	if asJSON {
+		data, _ := json.MarshalIndent(result, "", "  ")
+		fmt.Println(string(data))
+		return nil
+	}
+
+	compare.PrintTable(result)
+
+	if len(result.NewFindings) > 0 {
+		os.Exit(1)
+	}
+	return nil
+}
+
+func runUpgrade(cmd *cobra.Command, args []string) error {
+	checkOnly, _ := cmd.Flags().GetBool("check")
+
+	fmt.Printf("Current version: %s\n", upgrade.CurrentVersion())
+
+	release, err := upgrade.CheckLatest()
+	if err != nil {
+		return fmt.Errorf("checking for updates: %w", err)
+	}
+
+	fmt.Printf("Latest version:  %s\n", release.TagName)
+	fmt.Printf("Release notes:   %s\n\n", release.HTMLURL)
+
+	if !upgrade.IsNewerAvailable(upgrade.CurrentVersion(), release.TagName) {
+		fmt.Println("You're on the latest version.")
+		return nil
+	}
+
+	if checkOnly {
+		fmt.Printf("Update available: %s → %s\n", upgrade.CurrentVersion(), release.TagName)
+		fmt.Println("Run 'trusty upgrade' to update.")
+		return nil
+	}
+
+	fmt.Println("Upgrading...")
+	if err := upgrade.PerformUpgrade(release); err != nil {
+		return fmt.Errorf("upgrade failed: %w", err)
+	}
+
+	fmt.Println("Upgrade complete!")
+	return nil
+}
+
+func runInstallHook(cmd *cobra.Command, args []string) error {
+	hookTypeStr, _ := cmd.Flags().GetString("type")
+	force, _ := cmd.Flags().GetBool("force")
+	uninstall, _ := cmd.Flags().GetBool("uninstall")
+
+	var t hook.Type
+	switch hookTypeStr {
+	case "pre-commit":
+		t = hook.PreCommit
+	case "pre-push":
+		t = hook.PrePush
+	default:
+		return fmt.Errorf("unsupported hook type: %s (use pre-commit or pre-push)", hookTypeStr)
+	}
+
+	if uninstall {
+		return hook.Uninstall(".", t)
+	}
+	return hook.Install(".", t, force)
+}
+
+func runMerge(cmd *cobra.Command, args []string) error {
+	cfg, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	if minScore > 0 {
+		cfg.Scan.MinScore = minScore
+	}
+
+	result, err := merge.Run(context.Background(), cfg, policyFile, trackRegression)
+	if err != nil {
+		return fmt.Errorf("merge gate: %w", err)
+	}
+
+	if result.Details != nil && result.Details.ScanResult != nil {
+		r := result.Details.ScanResult
+		fmt.Fprintf(os.Stderr, "Trust score: %d/100 | Issues: %d\n", r.TrustScore, r.Summary.TotalIssues)
+
+		for _, f := range r.Files {
+			for _, finding := range f.Findings {
+				sev := "INFO"
+				switch finding.Severity {
+				case types.SeverityError:
+					sev = "ERROR"
+				case types.SeverityWarning:
+					sev = "WARN"
+				}
+				fmt.Fprintf(os.Stderr, "  [%s] %s:%d %s\n", sev, f.Path, finding.Line, finding.Message)
+			}
+		}
+
+		if len(result.Details.PolicyViolations) > 0 {
+			fmt.Fprintf(os.Stderr, "Policy violations: %d\n", len(result.Details.PolicyViolations))
+			for _, v := range result.Details.PolicyViolations {
+				fmt.Fprintf(os.Stderr, "  [%s] %s\n", v.Action, v.Message)
+			}
+		}
+
+		if result.Details.RegressionMessage != "" {
+			fmt.Fprintf(os.Stderr, "Regression: %s\n", result.Details.RegressionMessage)
+		}
+	}
+
+	if result.Passed {
+		fmt.Println(result.Message)
+		return nil
+	}
+
+	fmt.Fprintf(os.Stderr, "%s\n", result.Message)
+	os.Exit(1)
+	return nil
+}
+
+func runWeb(cmd *cobra.Command, args []string) error {
+	port, _ := cmd.Flags().GetInt("port")
+	enableSSO, _ := cmd.Flags().GetBool("sso")
+	ssoConfigPath, _ := cmd.Flags().GetString("sso-config")
+
+	cfg, err := loadConfig()
+	if err != nil {
+		return err
+	}
+
+	srv := server.New(cfg, port)
+
+	if enableSSO {
+		ssoCfg := sso.Config{}
+		if ssoConfigPath != "" {
+			data, err := os.ReadFile(filepath.Clean(ssoConfigPath))
+			if err != nil {
+				return fmt.Errorf("reading SSO config: %w", err)
+			}
+			if err := yaml.Unmarshal(data, &ssoCfg); err != nil {
+				return fmt.Errorf("parsing SSO config: %w", err)
+			}
+		}
+		srv.SetSSO(sso.New(ssoCfg))
+	}
+
+	return srv.Start()
 }

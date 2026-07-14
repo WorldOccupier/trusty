@@ -11,7 +11,7 @@ go run ./cmd/trusty/    # Run the CLI
 ## Project Structure
 
 ```
-cmd/trusty/main.go    — CLI entry point (cobra). All 19 commands defined here.
+cmd/trusty/main.go    — CLI entry point (cobra). All 25 commands defined here.
 internal/
   scanner/            — Core scan engines
     scanner.go        — Orchestrator (3 tiers + security + logic + cache + regression)
@@ -51,6 +51,12 @@ internal/
     github.go
   plugin/             — Plugin system (Checker interface + .so loader)
     plugin.go
+  hook/               — Pre-commit/pre-push git hook management
+    hook.go
+  merge/              — Auto-merge gate (scan + policy + regression)
+    merge.go
+  server/             — Live web dashboard server (SSE + REST API)
+    server.go
   tui/                — Bubble Tea TUI for browsing findings
     tui.go
   types/              — Shared type definitions
@@ -85,6 +91,9 @@ vscode-trusty/            — VS Code extension scaffolding
 | `sbom`        | Generate CycloneDX SBOM | `--all, --output` |
 | `policy`      | Evaluate YAML/OPA policies | `--policy, --input, --opa` |
 | `dashboard`   | Generate HTML dashboard | `--output, --json` |
+| `install-hook`| Install pre-commit/pre-push git hooks | `--type, --force, --uninstall` |
+| `merge`       | Combined scan + policy + regression gate | `--min-score, --policy-file, --track` |
+| `web`         | Live web dashboard server | `--port, --sso, --sso-config` |
 
 **Exit codes**: All detection commands exit 1 when findings are present (not just below score threshold). Use for CI gating.
 
@@ -140,6 +149,9 @@ output:
 - **Policy engine**: `trusty policy` evaluates YAML policies (conditions on severity/rule/category, actions: block/warn/allow). OPA binary integration via `--opa` flag.
 - **Dashboard**: `trusty dashboard` generates self-contained HTML with Chart.js score trends from audit data.
 - **SSO/SAML**: `internal/sso/` provides `Config` struct and `Authenticator` middleware for OIDC/SAML/GitHub/Google providers (designed for future web server).
+- **Git hooks**: `trusty install-hook` writes a shell script to `.git/hooks/` that runs `trusty scan --staged`. Supports `--type pre-commit|pre-push`, `--force`, and `--uninstall`.
+- **Merge gate**: `trusty merge` runs scan against staged changes, evaluates YAML policy rules, and checks regression history. Exits 0 only if all three pass. Policy violations with `block` action immediately fail the gate.
+- **Web server**: `trusty web` is a persistent HTTP server using `net/http` and Server-Sent Events (SSE) for real-time updates. Routes: `/` (dashboard), `/api/health`, `/api/stats`, `/api/scan` (POST), `/api/events` (SSE). Optional SSO middleware wraps all routes.
 - **Docker**: Multi-stage Dockerfile (golang:1.24-alpine → alpine:3.19, 8MB binary).
 - **Helm**: `helm/trusty/` chart with deployment, service, config, secrets configuration.
 
