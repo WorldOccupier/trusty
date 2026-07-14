@@ -11,7 +11,7 @@ go run ./cmd/trusty/    # Run the CLI
 ## Project Structure
 
 ```
-cmd/trusty/main.go    — CLI entry point (cobra). All 25 commands defined here.
+cmd/trusty/main.go    — CLI entry point (cobra). All 30 commands defined here.
 internal/
   scanner/            — Core scan engines
     scanner.go        — Orchestrator (3 tiers + security + logic + cache + regression)
@@ -51,12 +51,22 @@ internal/
     github.go
   plugin/             — Plugin system (Checker interface + .so loader)
     plugin.go
+  ci/                 — CI platform auto-detection + pipeline runner
+    ci.go, comment.go
+  validate/           — Environment and config validation
+    validate.go
   hook/               — Pre-commit/pre-push git hook management
     hook.go
   merge/              — Auto-merge gate (scan + policy + regression)
     merge.go
   server/             — Live web dashboard server (SSE + REST API)
     server.go
+  slack/              — Slack webhook notification
+    slack.go
+  jira/               — Jira ticket creation
+    jira.go
+  mrcomment/          — GitLab MR comment posting
+    gitlab.go
   tui/                — Bubble Tea TUI for browsing findings
     tui.go
   types/              — Shared type definitions
@@ -94,6 +104,11 @@ vscode-trusty/            — VS Code extension scaffolding
 | `install-hook`| Install pre-commit/pre-push git hooks | `--type, --force, --uninstall` |
 | `merge`       | Combined scan + policy + regression gate | `--min-score, --policy-file, --track` |
 | `web`         | Live web dashboard server | `--port, --sso, --sso-config` |
+| `slack`       | Post scan results to Slack | `--webhook-url` |
+| `jira`        | Create Jira tickets from findings | `--project` |
+| `mr-comment`  | Post findings as GitLab MR comment | (none) |
+| `ci`          | Auto-detect CI and run scan + comment pipeline | (none) |
+| `validate`    | Validate config, git, keys, and cache files | `--config` |
 
 **Exit codes**: All detection commands exit 1 when findings are present (not just below score threshold). Use for CI gating.
 
@@ -152,6 +167,13 @@ output:
 - **Git hooks**: `trusty install-hook` writes a shell script to `.git/hooks/` that runs `trusty scan --staged`. Supports `--type pre-commit|pre-push`, `--force`, and `--uninstall`.
 - **Merge gate**: `trusty merge` runs scan against staged changes, evaluates YAML policy rules, and checks regression history. Exits 0 only if all three pass. Policy violations with `block` action immediately fail the gate.
 - **Web server**: `trusty web` is a persistent HTTP server using `net/http` and Server-Sent Events (SSE) for real-time updates. Routes: `/` (dashboard), `/api/health`, `/api/stats`, `/api/scan` (POST), `/api/events` (SSE). Optional SSO middleware wraps all routes.
+- **Slack notifications**: `trusty slack` sends scan results as rich Slack messages via Incoming Webhooks. Uses `SLACK_WEBHOOK_URL` env var or `--webhook-url` flag. Messages include score color-coding (green >= 70, yellow >= 50, red < 50) and per-file finding lists.
+- **Jira tickets**: `trusty jira` creates Jira issues per-file with findings, using the Jira REST API. Uses `JIRA_HOST`, `JIRA_EMAIL`, `JIRA_API_TOKEN`, `JIRA_PROJECT` env vars. Sets priority based on highest severity finding. Creates issues in the "Bug" issue type with ADF-formatted descriptions.
+- **GitLab MR comments**: `trusty mr-comment` posts formatted scan results to GitLab merge requests via the GitLab API. Uses `CI_PROJECT_ID`, `CI_MERGE_REQUEST_IID`, `GITLAB_TOKEN` env vars (auto-populated in GitLab CI). Supports `CI_SERVER_URL` for self-hosted GitLab.
+- **CI auto-detection**: `trusty ci` detects CI platform from env vars (`GITHUB_ACTIONS`, `GITLAB_CI`, `JENKINS_URL`, `CIRCLECI`) — no config required. Runs scan and posts PR/MR comment on supported platforms.
+- **Validate**: `trusty validate` runs all checks (config, git repo, LLM key, cache) without short-circuiting — gives full picture.
+- **Comprehensive tests**: unit tests exist for scanner/static, scanner/security, scanner/logic, config, report, and ci packages. All use `package foo` (white-box) convention.
+- **os.Exit refactoring**: all `os.Exit(1)` calls in `cmd/trusty/main.go` converted to `return fmt.Errorf(...)`. Command handlers now return errors instead of calling `os.Exit` directly. Cobra's `RunE` handles exit code 1 on error. This enables unit-testing of command handlers. Main error handler at top level (`root.Execute()` error check) is the sole remaining `os.Exit(1)`.
 - **Docker**: Multi-stage Dockerfile (golang:1.24-alpine → alpine:3.19, 8MB binary).
 - **Helm**: `helm/trusty/` chart with deployment, service, config, secrets configuration.
 
@@ -164,3 +186,9 @@ output:
 - `OPENAI_API_KEY` — OpenAI API key (default provider)
 - `ANTHROPIC_API_KEY` — Anthropic API key (when `provider: anthropic`)
 - `CI` — when `true`, enables CI mode (set automatically in GitHub Actions)
+- `GITHUB_TOKEN` — GitHub API token (for PR commenting)
+- `GITLAB_TOKEN` — GitLab API token (for MR commenting)
+- `GITHUB_ACTIONS` — set by GitHub Actions; detected by `ci` command
+- `GITLAB_CI` — set by GitLab CI; detected by `ci` command
+- `JENKINS_URL` / `JENKINS_HOME` — set by Jenkins; detected by `ci` command
+- `CIRCLECI` — set by CircleCI; detected by `ci` command

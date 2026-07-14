@@ -84,7 +84,7 @@ trusty init
 - [x] **SSO/SAML** — `internal/sso/` — Config struct + middleware for OIDC, SAML, GitHub, Google providers
 - [x] **On-prem deployment** — Multi-stage Dockerfile + Helm chart (deployment, service, config, secrets)
 
-### Phase 6 — Next Gen (In Progress)
+### Phase 6 — Next Gen (Implemented)
 
 - [x] **Deep Go AST analysis** — Full `go/ast`-based analysis with type checking, nil safety, bounds checking, and error handling verification
 - [x] **Auto-fix** — `trusty fix` — Apply fix suggestions from findings directly to source files with interactive preview
@@ -93,8 +93,12 @@ trusty init
 - [x] **Live web server** — `trusty web` — Real-time dashboard server with SSE and REST API
 - [x] **Pre-commit hook** — `trusty install-hook` — Install pre-commit/pre-push git hooks that auto-scan staged changes
 - [x] **Auto-merge gate** — `trusty merge` — Combined scan + policy + regression check as a single CI merge gate
-- [ ] **Slack integration** — `trusty slack` — Post scan summaries to Slack channels via webhook
-- [ ] **Jira integration** — `trusty jira` — Create Jira tickets from findings automatically
+- [x] **Slack integration** — `trusty slack` — Post scan summaries to Slack channels via webhook
+- [x] **Jira integration** — `trusty jira` — Create Jira tickets from findings automatically
+- [x] **GitLab MR commenting** — `trusty mr-comment` — Post findings as GitLab MR comments
+- [x] **CI auto-detection** — `trusty ci` — Auto-detect CI platform (GitHub Actions, GitLab CI, Jenkins, CircleCI) and run scan + PR/MR comment pipeline
+- [x] **Environment validation** — `trusty validate` — Validate config file, git repo, LLM API keys, and cache file integrity
+- [x] **Comprehensive tests** — Unit tests for scanner (static, security, logic), config, report, and CI packages
 
 ## 3-Tier Scan Engine
 
@@ -471,6 +475,57 @@ trusty web --port 9090
 trusty web --sso --sso-config sso.yml
 ```
 
+### `trusty slack`
+
+```bash
+# Post scan results to Slack
+trusty scan --output results.json
+trusty slack results.json
+
+# Use a specific webhook URL
+trusty slack results.json --webhook-url https://hooks.slack.com/services/...
+```
+
+### `trusty jira`
+
+```bash
+# Create Jira tickets from scan findings
+trusty scan --output results.json
+trusty jira results.json
+
+# Specify project key
+trusty jira results.json --project MYPROJ
+```
+
+### `trusty mr-comment`
+
+```bash
+# Post scan results as a GitLab MR comment
+trusty scan --output results.json
+trusty mr-comment results.json
+```
+
+### `trusty ci`
+
+```bash
+# Auto-detect CI platform and run pipeline
+trusty ci
+```
+
+Detects GitHub Actions, GitLab CI, Jenkins, CircleCI from env vars. Runs scan and posts PR/MR comment on supported platforms.
+
+### `trusty validate`
+
+```bash
+# Validate all checks
+trusty validate
+
+# Use custom config path
+trusty validate --config .trusty.yml
+```
+
+Checks: config file validity, git repository status, LLM API key presence, cache file integrity.
+
 ### `trusty dashboard`
 
 ```bash
@@ -526,12 +581,23 @@ trusty/
 │   ├── policy/                     # Team policy overlay + engine
 │   │   ├── policy.go               # Policy overlay (file/URL)
 │   │   └── engine.go               # YAML policy engine + OPA
+│   ├── ci/                         # CI platform auto-detection + pipeline runner
+│   │   ├── ci.go
+│   │   └── comment.go
+│   ├── validate/                   # Environment and config validation
+│   │   └── validate.go
 │   ├── hook/                       # Pre-commit/pre-push git hook management
 │   │   └── hook.go
 │   ├── merge/                      # Auto-merge gate (scan + policy + regression)
 │   │   └── merge.go
 │   ├── server/                     # Live web dashboard server (SSE + REST API)
 │   │   └── server.go
+│   ├── slack/                      # Slack webhook notification
+│   │   └── slack.go
+│   ├── jira/                       # Jira ticket creation
+│   │   └── jira.go
+│   ├── mrcomment/                  # GitLab MR comment posting
+│   │   └── gitlab.go
 │   ├── prcomment/                  # GitHub PR comment posting
 │   ├── plugin/                     # Go plugin system
 │   │   └── plugin.go

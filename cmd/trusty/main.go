@@ -11,23 +11,28 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 	"github.com/WorldOccupier/trusty/internal/audit"
+	"github.com/WorldOccupier/trusty/internal/ci"
 	"github.com/WorldOccupier/trusty/internal/compare"
 	"github.com/WorldOccupier/trusty/internal/config"
 	"github.com/WorldOccupier/trusty/internal/dashboard"
 	"github.com/WorldOccupier/trusty/internal/fixer"
 	"github.com/WorldOccupier/trusty/internal/hook"
+	"github.com/WorldOccupier/trusty/internal/jira"
 	"github.com/WorldOccupier/trusty/internal/llm"
 	"github.com/WorldOccupier/trusty/internal/merge"
+	"github.com/WorldOccupier/trusty/internal/mrcomment"
 	"github.com/WorldOccupier/trusty/internal/policy"
 	"github.com/WorldOccupier/trusty/internal/prcomment"
 	"github.com/WorldOccupier/trusty/internal/report"
 	"github.com/WorldOccupier/trusty/internal/sbom"
+	"github.com/WorldOccupier/trusty/internal/slack"
 	"github.com/WorldOccupier/trusty/internal/scanner"
 	"github.com/WorldOccupier/trusty/internal/server"
 	"github.com/WorldOccupier/trusty/internal/sso"
 	"github.com/WorldOccupier/trusty/internal/tui"
 	"github.com/WorldOccupier/trusty/internal/types"
 	"github.com/WorldOccupier/trusty/internal/upgrade"
+	"github.com/WorldOccupier/trusty/internal/validate"
 )
 
 var (
@@ -480,6 +485,76 @@ Examples:
 	webCmd.Flags().Bool("sso", false, "Enable SSO authentication")
 	webCmd.Flags().String("sso-config", "", "SSO config file path")
 
+	slackCmd := &cobra.Command{
+		Use:   "slack",
+		Short: "Post scan results to Slack",
+		Long: `Post scan results as a formatted message to a Slack channel
+via Incoming Webhook.
+
+Examples:
+  trusty scan --output results.json
+  trusty slack results.json
+  trusty slack results.json --webhook-url https://hooks.slack.com/...`,
+		Args: cobra.ExactArgs(1),
+		RunE: runSlack,
+	}
+	slackCmd.Flags().String("webhook-url", "", "Slack webhook URL (or set SLACK_WEBHOOK_URL)")
+
+	jiraCmd := &cobra.Command{
+		Use:   "jira",
+		Short: "Create Jira tickets from scan findings",
+		Long: `Create Jira issues from scan findings automatically.
+Uses JIRA_HOST, JIRA_EMAIL, JIRA_API_TOKEN, and JIRA_PROJECT env vars.
+
+Examples:
+  trusty scan --output results.json
+  trusty jira results.json
+  trusty jira results.json --project MYPROJ`,
+		Args: cobra.ExactArgs(1),
+		RunE: runJira,
+	}
+	jiraCmd.Flags().String("project", "", "Jira project key (or set JIRA_PROJECT)")
+
+	mrCommentCmd := &cobra.Command{
+		Use:   "mr-comment",
+		Short: "Post scan results as a GitLab MR comment",
+		Long: `Post formatted scan results as a comment on a GitLab merge request.
+Uses CI_PROJECT_ID, CI_MERGE_REQUEST_IID, and GITLAB_TOKEN env vars.
+
+Examples:
+  trusty scan --output results.json
+  trusty mr-comment results.json`,
+		Args: cobra.ExactArgs(1),
+		RunE: runMRComment,
+	}
+
+	ciCmd := &cobra.Command{
+		Use:   "ci",
+		Short: "Auto-detect CI platform and run the appropriate pipeline",
+		Long: `Detect the current CI platform from environment variables and run
+the appropriate pipeline: scan, PR/MR comment, and policy checks.
+
+Supported platforms: GitHub Actions, GitLab CI, Jenkins, CircleCI
+
+Examples:
+  trusty ci                           # Auto-detect and run`,
+		RunE: runCI,
+	}
+
+	validateCmd := &cobra.Command{
+		Use:   "validate",
+		Short: "Validate Trusty configuration and environment",
+		Long: `Check that Trusty is properly configured and the environment
+is ready for scanning. Validates config file, git repo, LLM API keys,
+and cache file integrity.
+
+Examples:
+  trusty validate                     # Run all checks
+  trusty validate --config .trusty.yml`,
+		RunE: runValidate,
+	}
+	validateCmd.Flags().StringVarP(&cfgFile, "config", "c", "", "Config file path")
+
 	root.AddCommand(scanCmd)
 	root.AddCommand(halluCmd)
 	root.AddCommand(reportCmd)
@@ -503,6 +578,11 @@ Examples:
 	root.AddCommand(installHookCmd)
 	root.AddCommand(mergeCmd)
 	root.AddCommand(webCmd)
+	root.AddCommand(slackCmd)
+	root.AddCommand(jiraCmd)
+	root.AddCommand(mrCommentCmd)
+	root.AddCommand(ciCmd)
+	root.AddCommand(validateCmd)
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -556,7 +636,7 @@ func runSecurity(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(findings) > 0 {
-		os.Exit(1)
+		return fmt.Errorf("found %d security issue(s)", len(findings))
 	}
 
 	return nil
@@ -608,7 +688,7 @@ func runLogic(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(findings) > 0 {
-		os.Exit(1)
+		return fmt.Errorf("found %d logic error(s)", len(findings))
 	}
 
 	return nil
@@ -759,7 +839,7 @@ func runFuzz(cmd *cobra.Command, args []string) error {
 	fmt.Println(string(data))
 
 	if output.Errors > 0 {
-		os.Exit(1)
+		return fmt.Errorf("fuzz testing found %d error(s)", output.Errors)
 	}
 
 	return nil
@@ -945,9 +1025,8 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 
 	if result.Summary.TotalIssues > 0 {
-		fmt.Fprintf(os.Stderr, "Found %d issue(s) — trust score %d/100\n",
+		return fmt.Errorf("found %d issue(s) — trust score %d/100",
 			result.Summary.TotalIssues, result.TrustScore)
-		os.Exit(1)
 	}
 
 	return nil
@@ -1008,8 +1087,7 @@ func runHallu(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(issues) > 0 {
-		fmt.Fprintf(os.Stderr, "\nFound %d potentially hallucinated import(s)\n", len(issues))
-		os.Exit(1)
+		return fmt.Errorf("found %d potentially hallucinated import(s)", len(issues))
 	}
 
 	return nil
@@ -1126,8 +1204,7 @@ func runIntent(cmd *cobra.Command, args []string) error {
 		totalIssues += len(r.Findings)
 	}
 	if totalIssues > 0 {
-		fmt.Fprintf(os.Stderr, "\nFound %d intent mismatch(es)\n", totalIssues)
-		os.Exit(1)
+		return fmt.Errorf("found %d intent mismatch(es)", totalIssues)
 	}
 
 	return nil
@@ -1440,7 +1517,7 @@ func runPolicyCheck(cmd *cobra.Command, args []string) error {
 	fmt.Println(string(data))
 
 	if len(violations) > 0 {
-		os.Exit(1)
+		return fmt.Errorf("found %d policy violation(s)", len(violations))
 	}
 	return nil
 }
@@ -1505,7 +1582,7 @@ func runCompare(cmd *cobra.Command, args []string) error {
 	compare.PrintTable(result)
 
 	if len(result.NewFindings) > 0 {
-		os.Exit(1)
+		return fmt.Errorf("found %d new finding(s) compared to baseline", len(result.NewFindings))
 	}
 	return nil
 }
@@ -1644,4 +1721,121 @@ func runWeb(cmd *cobra.Command, args []string) error {
 	}
 
 	return srv.Start()
+}
+
+func runSlack(cmd *cobra.Command, args []string) error {
+	webhookURL, _ := cmd.Flags().GetString("webhook-url")
+
+	result, err := loadScanResult(args[0])
+	if err != nil {
+		return err
+	}
+
+	client := slack.New(webhookURL)
+	if err := client.Post(result); err != nil {
+		return fmt.Errorf("posting to Slack: %w", err)
+	}
+
+	fmt.Println("Scan results posted to Slack successfully.")
+	return nil
+}
+
+func runJira(cmd *cobra.Command, args []string) error {
+	project, _ := cmd.Flags().GetString("project")
+
+	result, err := loadScanResult(args[0])
+	if err != nil {
+		return err
+	}
+
+	client := jira.New()
+	if project != "" {
+		os.Setenv("JIRA_PROJECT", project)
+	}
+
+	keys, err := client.CreateIssues(result)
+	if err != nil {
+		return fmt.Errorf("creating Jira issues: %w", err)
+	}
+
+	if len(keys) == 0 {
+		fmt.Println("No issues created (no findings found).")
+		return nil
+	}
+
+	fmt.Printf("Created %d Jira issue(s):\n", len(keys))
+	for _, key := range keys {
+		fmt.Printf("  %s\n", key)
+	}
+	return nil
+}
+
+func runMRComment(cmd *cobra.Command, args []string) error {
+	result, err := loadScanResult(args[0])
+	if err != nil {
+		return err
+	}
+
+	client := mrcomment.New()
+	if err := client.Post(result); err != nil {
+		return fmt.Errorf("posting MR comment: %w", err)
+	}
+
+	fmt.Println("MR comment posted successfully.")
+	return nil
+}
+
+func runCI(cmd *cobra.Command, args []string) error {
+	cfg, err := loadConfig()
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+
+	result, err := ci.Run(context.Background(), cfg)
+	if err != nil {
+		return fmt.Errorf("ci pipeline: %w", err)
+	}
+
+	fmt.Fprintf(os.Stderr, "Result: %s\n", result.Message)
+	if !result.Passed {
+		fmt.Fprintf(os.Stderr, "CI pipeline found issues\n")
+		os.Exit(1)
+	}
+	return nil
+}
+
+func runValidate(cmd *cobra.Command, args []string) error {
+	result := validate.Run(cfgFile)
+
+	for _, c := range result.Checks {
+		status := "PASS"
+		if !c.Passed {
+			status = "FAIL"
+		}
+		fmt.Printf("[%s] %s", status, c.Name)
+		if c.Message != "" {
+			fmt.Printf(" — %s", c.Message)
+		}
+		fmt.Println()
+	}
+
+	if !result.Passed {
+		fmt.Fprintf(os.Stderr, "%s\n", result.Message)
+		os.Exit(1)
+	}
+	return nil
+}
+
+func loadScanResult(path string) (*types.ScanResult, error) {
+	data, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		return nil, fmt.Errorf("reading file: %w", err)
+	}
+
+	var result types.ScanResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, fmt.Errorf("parsing scan result: %w", err)
+	}
+
+	return &result, nil
 }
