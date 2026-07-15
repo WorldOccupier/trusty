@@ -10,6 +10,13 @@ All commands exit 1 when findings are present (not just below score threshold). 
 # Scan staged changes (default)
 trusty scan
 
+# Scan entire directory recursively (all supported languages)
+trusty scan --dir .
+trusty scan --dir /path/to/code --format sarif --output results.json
+
+# Scan specific files or directories (non-git mode)
+trusty scan main.go lib.py app.js src/
+
 # Scan a specific commit range
 trusty scan --from HEAD~3 --to HEAD
 
@@ -57,7 +64,43 @@ trusty scan --policy-file ./team-policy.yml
 trusty scan --policy-url https://example.com/org-policy.yml
 ```
 
-**Key flags:** `--staged, --from, --to, --base, --head, --format, --output, --min-score, --no-cache, --diff-file, --track, --all-packages, --policy-file, --policy-url`
+**Key flags:** `--staged, --dir, --from, --to, --base, --head, --format, --output, --min-score, --no-cache, --diff-file, --track, --all-packages, --policy-file, --policy-url`
+
+## `trusty fix`
+
+Auto-apply fix suggestions from scan results directly to source files. Each finding's `Suggestion` field is used as the fix when available; built-in fix templates cover 50+ rule types across all supported languages.
+
+```bash
+# Save scan results, then apply fixes
+trusty scan --output results.json
+trusty fix results.json
+
+# Preview fixes without modifying files
+trusty fix results.json --dry-run
+
+# Confirm each fix before applying
+trusty fix results.json --interactive
+
+# Specify source directory (default: .)
+trusty fix results.json --dir /path/to/project
+
+# Pipeline: scan entire directory and auto-fix
+trusty scan --dir . --output results.json && trusty fix results.json
+```
+
+**Mechanically auto-fixed rules** (line-level replacement):
+- `none-comparison` — `== None` → `is None` in Python
+- `var-usage` — `var` → `const` in JavaScript
+- `missing-radix` — appends `, 10` to `parseInt()` calls
+- `console-log`, `system-out-println` — comments out the line
+- `redundant-equality` — strips `== True` in Python
+- `bare-except` — `except:` → `except Exception:`
+- `bare-exception-catch` — adds `as e` to bare exception catches
+- `missing-deferred-close` / `missing-defer-close` — inserts `defer X.Close()` line
+
+All other rules provide a descriptive suggestion to manually apply.
+
+**Key flags:** `--dry-run, --interactive, --dir`
 
 ## `trusty init`
 

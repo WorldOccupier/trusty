@@ -66,6 +66,7 @@ internal/
   mrcomment/          — GitLab MR comment posting
   tui/                — Bubble Tea TUI for browsing findings
   types/              — Shared type definitions
+  fixer/              — Auto-fix engine (50+ rules across 5 languages)
 Makefile              — Build/test timing, profiling, coverage, lint
 Dockerfile            — Multi-stage Docker build
 docs/                 — Detailed documentation (commands, architecture, etc.)
@@ -151,7 +152,9 @@ output:
 - **GitLab MR**: `trusty mr-comment` posts formatted results to GitLab MR.
 - **CI auto-detection**: `trusty ci` detects GitHub/GitLab/Jenkins/CircleCI from env vars.
 - **Validate**: `trusty validate` checks config, git, LLM key, cache — no short-circuit.
-- **Comprehensive tests**: unit tests for scanner/static, security, logic, config, report, ci.
+- **Auto-fix**: `trusty fix results.json` applies 50+ fix templates across Go, Python, JS, Java, Rust — use `--dry-run` to preview, `--interactive` for per-fix confirmation.
+- **Dir scan**: `trusty scan --dir .` scans entire directory (not just git diff) — useful for CI-less environments.
+- **Comprehensive tests**: unit tests for scanner/static, security, logic, config, report, ci, fixer.
 - **cmd/trusty split**: 1841-line main.go split into 7 files (< 500 lines each).
 - **scanner split**: fingerprint.go (584 lines → 3 files), logic.go (562 lines → 3 files).
 - **Makefile**: `make time-build` / `make time-test` for performance tracking.
