@@ -20,6 +20,9 @@ func isFunctionDecl(line, lang string) bool {
 		return strings.HasPrefix(line, "def ") || strings.HasPrefix(line, "async def ")
 	case "javascript":
 		return strings.HasPrefix(line, "function ") || strings.HasPrefix(line, "const ") || strings.HasPrefix(line, "let ") || strings.HasPrefix(line, "var ")
+	case "java":
+		return (strings.HasPrefix(line, "public ") || strings.HasPrefix(line, "private ") || strings.HasPrefix(line, "protected ")) &&
+			(strings.Contains(line, "(") && (strings.Contains(line, "{") || strings.Contains(line, ";")))
 	default:
 		return strings.HasPrefix(line, "func ") || strings.HasPrefix(line, "def ") || strings.HasPrefix(line, "function ")
 	}
@@ -56,13 +59,15 @@ func isImportStart(line, lang string) bool {
 		return strings.HasPrefix(line, "import ") || strings.HasPrefix(line, "from ")
 	case "javascript":
 		return strings.HasPrefix(line, "import ") || strings.HasPrefix(line, "const ") && strings.Contains(line, "require(")
+	case "java":
+		return strings.HasPrefix(line, "import ") && strings.Contains(line, ";")
 	default:
 		return false
 	}
 }
 
 func isImportEnd(line, lang string) bool {
-	return line == ")"
+	return line == ")" || lang == "java"
 }
 
 func extractImportPath(line, lang string) string {
@@ -92,6 +97,11 @@ func extractImportPath(line, lang string) string {
 				return strings.Trim(strings.TrimSpace(parts[1]), "'\"")
 			}
 		}
+	case "java":
+		line = strings.TrimSpace(line)
+		line = strings.TrimPrefix(line, "import ")
+		line = strings.TrimSuffix(line, ";")
+		return strings.TrimSpace(line)
 	}
 	return ""
 }
@@ -103,6 +113,8 @@ func isStdLibImport(imp, lang string) bool {
 	case "python":
 		stdLibs := map[string]bool{"os": true, "sys": true, "json": true, "re": true, "math": true, "time": true, "pathlib": true, "collections": true, "functools": true, "itertools": true, "typing": true, "abc": true, "dataclasses": true, "enum": true, "hashlib": true, "hmac": true, "uuid": true, "datetime": true, "random": true}
 		return stdLibs[strings.Split(imp, ".")[0]]
+	case "java":
+		return strings.HasPrefix(imp, "java.") || strings.HasPrefix(imp, "javax.") || strings.HasPrefix(imp, "jakarta.")
 	default:
 		return false
 	}
@@ -117,6 +129,8 @@ func isErrorHandling(line, lang string) bool {
 		return strings.Contains(lower, "try:") || strings.Contains(lower, "except ") || strings.Contains(lower, "raise ") || strings.Contains(lower, "finally:") || strings.Contains(lower, "valueerror") || strings.Contains(lower, "typeerror") || strings.Contains(lower, "keyerror")
 	case "javascript":
 		return strings.Contains(lower, "try ") || strings.Contains(lower, "catch(") || strings.Contains(lower, "catch (") || strings.Contains(lower, "throw ") || strings.Contains(lower, ".catch(") || strings.Contains(lower, "reject(")
+	case "java":
+		return strings.Contains(lower, "try ") || strings.Contains(lower, "catch(") || strings.Contains(lower, "catch (") || strings.Contains(lower, "throws ") || strings.Contains(lower, "throw new ") || strings.Contains(lower, "finally ") || strings.Contains(lower, "exception")
 	}
 	return false
 }

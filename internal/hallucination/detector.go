@@ -33,6 +33,8 @@ func (d *Detector) Detect(path, content, diff string) []types.Finding {
 		return d.detectPython(content)
 	case "typescript", "javascript":
 		return d.detectJavaScript(content)
+	case "java":
+		return d.detectJava(content)
 	default:
 		return nil
 	}
@@ -159,9 +161,43 @@ func detectLanguageFromPath(path string) string {
 		return "javascript"
 	case ".ts", ".tsx":
 		return "typescript"
+	case ".java":
+		return "java"
 	default:
 		return "unknown"
 	}
+}
+
+func (d *Detector) detectJava(content string) []types.Finding {
+	var findings []types.Finding
+
+	importRe := regexp.MustCompile(`import\s+(\S+)\s*;`)
+	matches := importRe.FindAllStringSubmatch(content, -1)
+
+	for _, m := range matches {
+		moduleName := m[1]
+
+		if moduleName == "" || strings.HasPrefix(moduleName, "java.") || strings.HasPrefix(moduleName, "javax.") ||
+			strings.HasPrefix(moduleName, "jakarta.") || strings.HasPrefix(moduleName, "org.slf4j") ||
+			strings.HasPrefix(moduleName, "org.springframework") || strings.HasPrefix(moduleName, "org.apache") ||
+			strings.HasPrefix(moduleName, "com.fasterxml") || strings.HasPrefix(moduleName, "com.google") ||
+			strings.HasPrefix(moduleName, "lombok") || strings.HasPrefix(moduleName, "org.junit") ||
+			strings.HasPrefix(moduleName, "org.mockito") || strings.HasPrefix(moduleName, "org.hamcrest") {
+			continue
+		}
+
+		if strings.Count(moduleName, ".") >= 2 {
+			findings = append(findings, types.Finding{
+				Rule:       "hallucinated-import",
+				Severity:   types.SeverityError,
+				Message:    fmt.Sprintf("Java package %q may not exist — verify Maven/Gradle dependency", moduleName),
+				Suggestion: fmt.Sprintf("Verify %q is declared in pom.xml or build.gradle", moduleName),
+				Category:   "hallucination",
+			})
+		}
+	}
+
+	return findings
 }
 
 func isWellKnown(importPath string) bool {

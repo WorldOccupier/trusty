@@ -27,8 +27,12 @@ internal/
     semantic.go       — Tier 2: LLM-based semantic analysis
     verify.go         — Tier 3: Behavioral verification
     security.go       — Security vulnerability scanner
+    security_java.go  — Java-specific security checks
     logic.go          — (182 lines) Types, NewLogicDetector, Detect
     logic_go.go       — (211 lines) Go AST check functions
+    logic_python.go   — Python deep logic detection
+    logic_javascript.go — JavaScript deep logic detection
+    logic_java.go     — Java logic detection
     logic_edge.go     — (179 lines) Edge case and infinite loop checks
     testgen.go        — Test contract generation (_trusty_test.go)
     fuzz.go           — Property-based fuzz testing (_fuzz_test.go)

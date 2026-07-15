@@ -24,8 +24,13 @@ func (d *LogicDetector) Detect(files []types.DiffFile) []types.Finding {
 			findings = append(findings, d.detectGo(file.Content, file.Path)...)
 		case "python":
 			findings = append(findings, d.detectPython(file.Content, file.Path)...)
+			findings = append(findings, d.detectPythonDeep(file.Content, file.Path)...)
 		case "typescript", "javascript":
 			findings = append(findings, d.detectJavaScript(file.Content, file.Path)...)
+			findings = append(findings, d.detectJavaScriptDeep(file.Content, file.Path)...)
+		case "java":
+			findings = append(findings, d.detectJava(file.Content, file.Path)...)
+			findings = append(findings, d.checkJavaInfiniteLoops(file.Content, file.Path)...)
 		}
 		for i := range findings {
 			if findings[i].Category == "" {
