@@ -53,6 +53,9 @@ func (s *SecurityScanner) scanGo(content, path string) []types.Finding {
 		findings = append(findings, s.checkCommandInjection(trimmed, i+1, path)...)
 		findings = append(findings, s.checkPathTraversal(trimmed, i+1, path)...)
 		findings = append(findings, s.checkInsecureCrypto(trimmed, i+1, path)...)
+		findings = append(findings, s.checkOpenRedirect(trimmed, i+1, path)...)
+		findings = append(findings, s.checkJWTWeakness(trimmed, i+1, path)...)
+		findings = append(findings, s.checkNoSQLInjection(trimmed, i+1, path)...)
 
 		if strings.Contains(trimmed, "rand.Intn") || strings.Contains(trimmed, "math/rand") {
 			if strings.Contains(trimmed, "crypto/rand") || strings.Contains(trimmed, "\"crypto/rand\"") {
@@ -114,6 +117,10 @@ func (s *SecurityScanner) scanPython(content, path string) []types.Finding {
 				Category:   path,
 			})
 		}
+
+		findings = append(findings, s.checkPathTraversalPy(trimmed, i+1, path)...)
+		findings = append(findings, s.checkPickleDeserialize(trimmed, i+1, path)...)
+		findings = append(findings, s.checkRequestWithoutTimeout(trimmed, i+1, path)...)
 	}
 
 	return findings
@@ -157,6 +164,9 @@ func (s *SecurityScanner) scanJavaScript(content, path string) []types.Finding {
 				Category:   path,
 			})
 		}
+
+		findings = append(findings, s.checkJSDOMBasedXSS(trimmed, i+1, path)...)
+		findings = append(findings, s.checkJSInsecureCompare(trimmed, i+1, path)...)
 	}
 
 	return findings
@@ -335,6 +345,185 @@ func (s *SecurityScanner) checkInsecureCrypto(line string, lineNum int, path str
 				Category:   path,
 			})
 			break
+		}
+	}
+
+	return findings
+}
+
+func (s *SecurityScanner) checkOpenRedirect(line string, lineNum int, path string) []types.Finding {
+	var findings []types.Finding
+
+	if strings.Contains(line, "http.Redirect") &&
+		(strings.Contains(line, "+") ||
+			strings.Contains(line, "r.URL.Query") ||
+			strings.Contains(line, "r.FormValue") ||
+			strings.Contains(line, "r.PostFormValue")) {
+		findings = append(findings, types.Finding{
+			Rule:       "open-redirect",
+			Severity:   types.SeverityWarning,
+			Message:    "Open redirect — user-controlled URL in redirect",
+			Line:       lineNum,
+			Suggestion: "Validate and sanitize redirect URL against a whitelist of allowed destinations",
+			Category:   path,
+		})
+	}
+
+	return findings
+}
+
+func (s *SecurityScanner) checkJWTWeakness(line string, lineNum int, path string) []types.Finding {
+	var findings []types.Finding
+
+	if strings.Contains(line, "jwt.NewWithClaims") || strings.Contains(line, "jwt.SigningMethodHS256") {
+		if strings.Contains(line, "[]byte(\"") || strings.Contains(line, "[]byte(`") {
+			findings = append(findings, types.Finding{
+				Rule:       "weak-jwt-secret",
+				Severity:   types.SeverityWarning,
+				Message:    "JWT signing key may be weak",
+				Line:       lineNum,
+				Suggestion: "Use a properly generated random secret of at least 256 bits from an environment variable",
+				Category:   path,
+			})
+		}
+	}
+
+	return findings
+}
+
+func (s *SecurityScanner) checkNoSQLInjection(line string, lineNum int, path string) []types.Finding {
+	var findings []types.Finding
+
+	if strings.Contains(line, "bson.M") && strings.Contains(line, "+") {
+		findings = append(findings, types.Finding{
+			Rule:       "nosql-injection",
+			Severity:   types.SeverityError,
+			Message:    "Possible NoSQL injection",
+			Line:       lineNum,
+			Suggestion: "Use parameterized queries or sanitize user input before building BSON documents",
+			Category:   path,
+		})
+	}
+
+	if strings.Contains(line, "$where") &&
+		(strings.Contains(line, "req") || strings.Contains(line, "input") ||
+			strings.Contains(line, "param") || strings.Contains(line, "user")) {
+		findings = append(findings, types.Finding{
+			Rule:       "nosql-injection",
+			Severity:   types.SeverityError,
+			Message:    "Possible NoSQL injection",
+			Line:       lineNum,
+			Suggestion: "Avoid $where queries with user input — they allow arbitrary JavaScript execution",
+			Category:   path,
+		})
+	}
+
+	return findings
+}
+
+func (s *SecurityScanner) checkPathTraversalPy(line string, lineNum int, path string) []types.Finding {
+	var findings []types.Finding
+
+	if strings.Contains(line, "open(") && strings.Contains(line, "+") {
+		findings = append(findings, types.Finding{
+			Rule:       "path-traversal",
+			Severity:   types.SeverityError,
+			Message:    "Possible path traversal — file path constructed with string concatenation",
+			Line:       lineNum,
+			Suggestion: "Use os.path.realpath() to resolve the final path and validate it is within the expected directory",
+			Category:   path,
+		})
+	}
+
+	if strings.Contains(line, "os.path.join") && strings.Contains(line, "..") {
+		findings = append(findings, types.Finding{
+			Rule:       "path-traversal",
+			Severity:   types.SeverityError,
+			Message:    "Possible path traversal — file path constructed with string concatenation",
+			Line:       lineNum,
+			Suggestion: "Use os.path.realpath() to resolve the final path and validate it is within the expected directory",
+			Category:   path,
+		})
+	}
+
+	return findings
+}
+
+func (s *SecurityScanner) checkPickleDeserialize(line string, lineNum int, path string) []types.Finding {
+	var findings []types.Finding
+
+	if strings.Contains(line, "pickle.loads(") || strings.Contains(line, "cPickle.loads(") {
+		findings = append(findings, types.Finding{
+			Rule:       "unsafe-pickle",
+			Severity:   types.SeverityError,
+			Message:    "Unsafe pickle deserialization can lead to RCE",
+			Line:       lineNum,
+			Suggestion: "Use a safer serialization format like JSON or implement safelist-based unpickler",
+			Category:   path,
+		})
+	}
+
+	return findings
+}
+
+func (s *SecurityScanner) checkRequestWithoutTimeout(line string, lineNum int, path string) []types.Finding {
+	var findings []types.Finding
+
+	if (strings.Contains(line, "requests.get(") || strings.Contains(line, "requests.post(")) &&
+		!strings.Contains(line, "timeout=") {
+		findings = append(findings, types.Finding{
+			Rule:       "request-no-timeout",
+			Severity:   types.SeverityWarning,
+			Message:    "HTTP request without timeout",
+			Line:       lineNum,
+			Suggestion: "Add a timeout parameter to prevent hanging connections: requests.get(url, timeout=10)",
+			Category:   path,
+		})
+	}
+
+	return findings
+}
+
+func (s *SecurityScanner) checkJSDOMBasedXSS(line string, lineNum int, path string) []types.Finding {
+	var findings []types.Finding
+
+	if (strings.Contains(line, "location.hash") || strings.Contains(line, "location.search") || strings.Contains(line, "window.name")) &&
+		(strings.Contains(line, "innerHTML") || strings.Contains(line, "document.write(") || strings.Contains(line, "eval(")) {
+		findings = append(findings, types.Finding{
+			Rule:       "dom-xss",
+			Severity:   types.SeverityError,
+			Message:    "DOM-based XSS — user-controlled location property used in dangerous sink",
+			Line:       lineNum,
+			Suggestion: "Sanitize input or use safe APIs like textContent instead of innerHTML",
+			Category:   path,
+		})
+	}
+
+	return findings
+}
+
+func (s *SecurityScanner) checkJSInsecureCompare(line string, lineNum int, path string) []types.Finding {
+	var findings []types.Finding
+
+	if strings.Contains(line, "==") && !strings.Contains(line, "===") && !strings.Contains(line, "!==") {
+		securityKeywords := []string{"password", "token", "hash", "secret", "auth", "credential"}
+		lower := strings.ToLower(line)
+		hasKeyword := false
+		for _, kw := range securityKeywords {
+			if strings.Contains(lower, kw) {
+				hasKeyword = true
+				break
+			}
+		}
+		if hasKeyword {
+			findings = append(findings, types.Finding{
+				Rule:       "insecure-comparison",
+				Severity:   types.SeverityWarning,
+				Message:    "Insecure comparison — use strict equality (===) instead of loose equality (==)",
+				Line:       lineNum,
+				Suggestion: "Replace == with === to avoid type coercion vulnerabilities in security-critical comparisons",
+				Category:   path,
+			})
 		}
 	}
 

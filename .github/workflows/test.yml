@@ -30,6 +30,11 @@ jobs:
         run: go test ./... -count=1
       - name: Test with race
         run: go test ./... -race -count=1
+      - name: Self-scan
+        run: |
+          go build -o /tmp/trusty-selfscan ./cmd/trusty/
+          /tmp/trusty-selfscan scan --dir . --quiet 2>&1 || echo "Self-scan found issues (non-blocking)"
+        continue-on-error: true
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:

@@ -6,6 +6,23 @@ import (
 )
 
 func TestDetect_Local(t *testing.T) {
+	// Save and clear CI env vars to ensure local detection
+	ciVars := []string{"GITHUB_ACTIONS", "GITLAB_CI", "JENKINS_URL", "JENKINS_HOME", "CIRCLECI"}
+	saved := make(map[string]string)
+	for _, v := range ciVars {
+		saved[v] = os.Getenv(v)
+		os.Unsetenv(v)
+	}
+	defer func() {
+		for k, v := range saved {
+			if v != "" {
+				os.Setenv(k, v)
+			} else {
+				os.Unsetenv(k)
+			}
+		}
+	}()
+
 	p := Detect()
 	if p.Platform != PlatformLocal {
 		t.Errorf("expected Local, got %s", p.Platform)
