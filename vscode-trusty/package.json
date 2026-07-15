@@ -9,8 +9,18 @@
     "vscode": "^1.85.0"
   },
   "categories": ["Linters", "Programming Languages"],
+  "keywords": ["ai", "code-quality", "security", "linter", "verification"],
   "activationEvents": ["onLanguage:go", "onLanguage:python", "onLanguage:typescript", "onLanguage:javascript"],
   "main": "./extension.js",
+  "icon": "icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/WorldOccupier/trusty.git"
+  },
+  "bugs": {
+    "url": "https://github.com/WorldOccupier/trusty/issues"
+  },
+  "homepage": "https://github.com/WorldOccupier/trusty",
   "contributes": {
     "commands": [
       {

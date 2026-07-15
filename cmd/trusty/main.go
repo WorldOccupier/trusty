@@ -28,10 +28,8 @@ var (
 	allPackages     bool
 	policyFile      string
 	policyURL       string
-)
 
-func main() {
-	root := &cobra.Command{
+	root = &cobra.Command{
 		Use:   "trusty",
 		Short: "AI Code Verification CLI",
 		Long: `Trusty automates verification of AI-generated code.
@@ -54,10 +52,11 @@ confidence to ship faster.`,
 			return nil
 		},
 	}
+)
 
+func main() {
 	root.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "Config file path")
 	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
-
 	initCommands(root)
 
 	if err := root.Execute(); err != nil {
