@@ -1,5 +1,5 @@
-.vscode/**
-.gitignore
+.vscodeignore
 node_modules/
-**/*.ts
-**/*.map
+.git/
+.gitignore
+*.vsix

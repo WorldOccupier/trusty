@@ -37,6 +37,16 @@ trusty scan --format sarif --min-score 80
 trusty init --interactive
 ```
 
+## Performance
+
+| Metric | Value |
+|--------|-------|
+| Cold build | 3.70s |
+| Warm build | 0.14s |
+| Binary size (stripped) | ~11MB |
+| Scan 100 files | < 500ms |
+| CI setup time | 2s (binary download) |
+
 ## Features
 
 ### Core Scanning

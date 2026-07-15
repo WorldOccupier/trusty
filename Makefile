@@ -127,6 +127,12 @@ coverage:
 	@echo ""
 	@echo "Open in browser: go tool cover -html=$(PROFILE_DIR)/coverage.out"
 
+self-scan:
+	go build -o /tmp/trusty-selfscan ./cmd/trusty/
+	/tmp/trusty-selfscan scan --dir . --quiet 2>&1 || true
+	@echo ""
+	@echo "Self-scan complete. Run 'trusty demo' for interactive demo."
+
 # ─── Help ───────────────────────────────────────────────────────────────
 
 help:

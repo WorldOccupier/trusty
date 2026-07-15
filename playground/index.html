@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trusty Playground</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0d1117;color:#e6edf3;font-family:'SF Mono','Fira Code','Cascadia Code','JetBrains Mono',monospace;min-height:100vh;display:flex;flex-direction:column}
+.header{background:#161b22;border-bottom:1px solid #30363d;padding:16px 24px;display:flex;align-items:center;gap:12px}
+.header h1{font-size:20px;font-weight:600;letter-spacing:-0.5px}
+.header h1 span{color:#58a6ff}
+.header .sub{color:#8b949e;font-size:12px;margin-left:auto}
+.container{display:flex;flex:1;gap:0;flex-wrap:wrap}
+.panel{flex:1;min-width:400px;display:flex;flex-direction:column}
+.panel-left{border-right:1px solid #30363d}
+.panel-header{background:#161b22;border-bottom:1px solid #30363d;padding:10px 16px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#8b949e;display:flex;justify-content:space-between;align-items:center}
+.editor-wrap{flex:1;display:flex;position:relative}
+#codeEditor{flex:1;background:#0d1117;color:#e6edf3;border:none;padding:16px;font-family:'SF Mono','Fira Code','Cascadia Code','JetBrains Mono',monospace;font-size:13px;line-height:1.6;resize:none;outline:none;tab-size:4}
+#codeEditor::placeholder{color:#484f58}
+.scroll-wrap{flex:1;overflow-y:auto}
+#results{padding:12px 16px}
+.result-item{padding:10px 12px;margin-bottom:6px;border-radius:6px;font-size:13px;line-height:1.5;border-left:3px solid transparent}
+.result-item .line-num{color:#8b949e;font-size:11px}
+.result-item .msg{color:#e6edf3;margin:2px 0}
+.result-item .suggestion{color:#8b949e;font-size:11px;font-style:italic}
+.result-item.error{border-left-color:#f85149;background:rgba(248,81,73,0.1)}
+.result-item.warning{border-left-color:#d29922;background:rgba(210,153,34,0.1)}
+.result-item.info{border-left-color:#58a6ff;background:rgba(88,166,255,0.08)}
+.empty-state{padding:32px 16px;text-align:center;color:#484f58}
+.empty-state .icon{font-size:32px;margin-bottom:8px}
+.empty-state p{font-size:13px}
+.summary-bar{background:#161b22;border-top:1px solid #30363d;padding:10px 16px;display:flex;align-items:center;gap:16px;font-size:12px;flex-wrap:wrap}
+.summary-bar .score{font-size:18px;font-weight:700}
+.summary-bar .score.high{color:#3fb950}
+.summary-bar .score.medium{color:#d29922}
+.summary-bar .score.low{color:#f85149}
+.summary-bar .stat{color:#8b949e}
+.summary-bar .stat span{color:#e6edf3;font-weight:600}
+.btn-group{display:flex;gap:8px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:6px;border:1px solid #30363d;font-size:12px;font-weight:600;cursor:pointer;transition:.15s;font-family:inherit;background:#21262d;color:#e6edf3}
+.btn:hover{background:#30363d}
+.btn-primary{background:#238636;border-color:#238636;color:#fff}
+.btn-primary:hover{background:#2ea043}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.btn-demo{background:#1f2937;border-color:#58a6ff;color:#58a6ff}
+.btn-demo:hover{background:#2d3748}
+#statusDot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
+#statusDot.idle{background:#8b949e}
+#statusDot.scanning{background:#d29922;animation:pulse 1s infinite}
+#statusDot.done{background:#3fb950}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.lang-tag{font-size:10px;padding:2px 8px;border-radius:10px;background:#1f2937;color:#58a6ff;border:1px solid #58a6ff33}
+.progress-bar{height:2px;background:#30363d;overflow:hidden}
+.progress-bar .fill{height:100%;background:#58a6ff;width:0;transition:width .3s}
+.line-highlight{background:rgba(248,81,73,0.15);display:inline}
+@media(max-width:800px){.panel{min-width:100%}.panel-left{border-right:none;border-bottom:1px solid #30363d}}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1><span>Trusty</span> Playground</h1>
+  <span class="lang-tag">v1.0</span>
+  <div class="sub">Client-side code scanner · no server needed</div>
+</div>
+
+<div class="container">
+  <div class="panel panel-left">
+    <div class="panel-header">
+      <span>Editor</span>
+      <div class="btn-group">
+        <button class="btn btn-demo" onclick="loadDemo()">Load Demo</button>
+        <button class="btn btn-primary" id="scanBtn" onclick="runScan()">Scan</button>
+      </div>
+    </div>
+    <div class="editor-wrap">
+      <textarea id="codeEditor" placeholder="// Paste Go, Python, or JavaScript code here...&#10;// Then click Scan to detect issues client-side." spellcheck="false"></textarea>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <span>Results</span>
+      <span id="status"><span id="statusDot" class="idle"></span>Ready</span>
+    </div>
+    <div class="progress-bar"><div class="fill" id="progressFill"></div></div>
+    <div class="scroll-wrap">
+      <div id="results">
+        <div class="empty-state">
+          <div class="icon">&#9000;</div>
+          <p>Paste code in the editor and click <strong>Scan</strong><br>to detect security &amp; logic issues</p>
+        </div>
+      </div>
+    </div>
+    <div class="summary-bar" id="summaryBar" style="display:none">
+      <span>Trust Score: <span class="score" id="scoreValue">0</span></span>
+      <span class="stat">Errors: <span id="errCount">0</span></span>
+      <span class="stat">Warnings: <span id="warnCount">0</span></span>
+      <span class="stat">Info: <span id="infoCount">0</span></span>
+      <span class="stat">Files: <span id="fileCount">1</span></span>
+    </div>
+  </div>
+</div>
+
+<script>
+const DEMO_CODE = `package main
+
+import (
+  "database/sql"
+  "fmt"
+  "os"
+  "os/exec"
+  "crypto/md5"
+)
+
+func main() {
+  username := os.Args[1]
+  query := "SELECT * FROM users WHERE name='" + username + "'"
+  db, _ := sql.Open("mysql", "user:pass@tcp(localhost:3306)/db")
+  rows, _ := db.Query(query)
+  fmt.Println(rows)
+}
+
+func runCmd(input string) {
+  cmd := exec.Command("sh", "-c", "echo "+input)
+  cmd.Run()
+}
+
+func setValue(v int) int {
+  v = v
+  return v
+}
+
+func processAll(items []string) {
+  for i := 0; i <= len(items); i++ {
+    fmt.Println(items[i])
+  }
+}
+
+func dangerous() {
+  apiKey := "sk-abc123def456"
+  secret := "ghp_xxxxxxxxxxxx"
+  awsKey := "AKIAIOSFODNN7EXAMPLE"
+  password := "supersecret123"
+
+  for {
+  }
+
+  result := exec.Command("bash", "-c", "curl "+apiKey)
+  result.Run()
+}
+
+func unused() {
+}
+`;
+
+const DEMO_PYTHON = `import os
+import subprocess
+import sys
+
+def process_user_data(user_input):
+    query = "SELECT * FROM users WHERE name = '" + user_input + "'"
+    os.system("echo " + user_input)
+
+    while True:
+        pass
+
+    api_key = "sk-xxxxxxxxxxxxxxxxxxxxxxxx"
+    password = "letmein123"
+    exec("import " + user_input)
+
+    with open(user_input, "r") as f:
+        data = f.read()
+        with open("/etc/passwd", "w") as out:
+            out.write(data)
+`;
+
+const DEMO_JS = `const express = require('express');
+const { exec } = require('child_process');
+const mysql = require('mysql');
+
+const apiKey = "sk-xxxxx";
+const pass = "hunter2";
+
+const db = mysql.createConnection({ user: 'root', password: 'pass123' });
+
+app.get('/user', (req, res) => {
+  const query = "SELECT * FROM users WHERE id = '" + req.query.id + "'";
+  db.query(query, (err, rows) => {
+    res.send(rows);
+  });
+});
+
+app.get('/exec', (req, res) => {
+  exec("echo " + req.query.cmd, (err, out) => {
+    res.send(out);
+  });
+});
+
+for (let i = 0; i <= 10; i++) {
+  console.log(i);
+}
+
+function loop() {
+  while (true) {}
+}
+
+eval(req.query.code);
+`;
+
+function detectLanguage(code) {
+  const t = code.trim();
+  if (!t) return 'unknown';
+  if (t.startsWith('package ') || /\bimport\s+\(/.test(t) || /\bfunc\s+\w+\s*\(/.test(t)) return 'go';
+  if (/\bdef\s+\w+\s*\(/.test(t) || /\bimport\s+\w+/.test(t) || /\bfrom\s+\w+\s+import\b/.test(t)) return 'python';
+  if (/\bconst\b|\blet\b|\bvar\b|\bfunction\b|\brequire\s*\(|\bimport\s+.*\s+from\b/.test(t)) return 'javascript';
+  if (/\bclass\s+\w+/.test(t) && /:\s*\w+/.test(t)) return 'python';
+  return 'unknown';
+}
+
+function runScan() {
+  const code = document.getElementById('codeEditor').value;
+  if (!code.trim()) return;
+
+  const lang = detectLanguage(code);
+  const scanBtn = document.getElementById('scanBtn');
+  scanBtn.disabled = true;
+  setStatus('scanning', 'Scanning...');
+
+  const fill = document.getElementById('progressFill');
+  fill.style.width = '30%';
+
+  const findings = [];
+  const lines = code.split('\n');
+
+  setTimeout(() => {
+    fill.style.width = '60%';
+
+    // --- SECURITY CHECKS ---
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+      if (trimmed.startsWith('//') || trimmed.startsWith('#')) continue;
+
+      // SQL injection
+      if (/db\.\w+\(.*\+.*\)/.test(trimmed) && /["']SELECT|INSERT|UPDATE|DELETE/i.test(code)) {
+        pushFinding(findings, 'error', 'sql-injection', 'SQL injection — string concatenation in query', i, 'Use parameterized queries', path(lines, i, code));
+      }
+
+      // Command injection
+      if (/exec\.Command\s*\(.*["']sh["']|["']bash["']|["']cmd["']/.test(trimmed) && /\+\s*\w/.test(trimmed)) {
+        pushFinding(findings, 'error', 'command-injection', 'Command injection — user input in shell command', i, 'Avoid shell; use exec.Command with args array', path(lines, i, code));
+      }
+      if (/os\.system\s*\(.*\b\w+\s*\+/.test(trimmed) || /os\.popen\s*\(.*\b\w+\s*\+/.test(trimmed)) {
+        pushFinding(findings, 'error', 'command-injection', 'Potential command injection — user input in shell command', i, 'Use subprocess.run with argument list', path(lines, i, code));
+      }
+      if (/subprocess\.(call|Popen|run)\s*\(.*["'].*["']\s*,\s*shell\s*=\s*True/.test(trimmed)) {
+        pushFinding(findings, 'error', 'command-injection', 'Command injection risk — shell=True with string command', i, 'Pass args as a list and avoid shell=True', path(lines, i, code));
+      }
+      if (/child_process/.test(code) && /exec\s*\(.*\+/.test(trimmed)) {
+        pushFinding(findings, 'error', 'command-injection', 'Command injection — user input concatenated in exec()', i, 'Use execFile() or pass args array', path(lines, i, code));
+      }
+
+      // Hardcoded secrets
+      const secretPatterns = [
+        [/["']sk-[A-Za-z0-9]{10,}["']/, 'stripe-secret', 'Hardcoded Stripe API key (sk-)'],
+        [/["']ghp_[A-Za-z0-9]{10,}["']/, 'github-token', 'Hardcoded GitHub personal access token (ghp_)'],
+        [/["']AKIA[A-Z0-9]{16,}["']/, 'aws-key', 'Hardcoded AWS access key (AKIA)'],
+        [/["'](?:secret|password|passwd|pwd)\s*["']\s*[:=]\s*["'][^"']{4,}["']/i, 'hardcoded-password', 'Hardcoded password/secret'],
+        [/["'](?:sk_live_|pk_live_)[A-Za-z0-9]+["']/, 'stripe-live-key', 'Hardcoded Stripe live key — potential financial exposure'],
+      ];
+      for (const [re, rule, msg] of secretPatterns) {
+        if (re.test(trimmed)) {
+          let s = 'Use environment variables or a secret manager';
+          if (rule === 'hardcoded-password') s = 'Store credentials in environment variables, not in code';
+          pushFinding(findings, 'error', rule, msg, i, s, path(lines, i, code));
+        }
+      }
+
+      // Insecure crypto / hash
+      if (/crypto\/md5/.test(trimmed) || /"md5"/.test(trimmed)) {
+        pushFinding(findings, 'warning', 'weak-crypto', 'Using MD5 — cryptographically broken', i, 'Use SHA-256 or SHA-3 instead', path(lines, i, code));
+      }
+      if (/\bmd5\s*\(/.test(trimmed) && lang === 'python') {
+        pushFinding(findings, 'warning', 'weak-crypto', 'Using MD5 — cryptographically broken', i, 'Use hashlib.sha256() instead', path(lines, i, code));
+      }
+
+      // Eval / exec / dangerous functions
+      if (/\beval\s*\(/.test(trimmed) && !trimmed.startsWith('//')) {
+        pushFinding(findings, 'error', 'dangerous-eval', 'Dangerous use of eval() — arbitrary code execution', i, 'Avoid eval(); use safer alternatives like JSON.parse', path(lines, i, code));
+      }
+      if (/\bexec\s*\(/.test(trimmed) && lang === 'python' && !trimmed.startsWith('#') && !/subprocess|os\./.test(code)) {
+        pushFinding(findings, 'error', 'dangerous-exec', 'Dangerous use of exec() — code injection risk', i, 'Avoid exec(); use AST parsing or restricted eval', path(lines, i, code));
+      }
+
+      // Path traversal
+      if (/(os\.Open|os\.ReadFile|ioutil\.ReadFile|os\.Create)\s*\(.*(user|input|name|arg|path)/.test(trimmed) && !/filepath\.(Clean|Join)/.test(trimmed)) {
+        pushFinding(findings, 'warning', 'path-traversal', 'Potential path traversal — user input in file path without sanitization', i, 'Use filepath.Clean() and filepath.Join() and validate path', path(lines, i, code));
+      }
+      if (/open\(["']\/etc\//.test(trimmed)) {
+        pushFinding(findings, 'error', 'path-traversal', 'Path traversal — accessing system file (/etc/)', i, 'Avoid writing to system paths with user-controlled data', path(lines, i, code));
+      }
+    }
+
+    fill.style.width = '85%';
+
+    // --- LOGIC CHECKS ---
+
+    // Off-by-one loops (<= in for/while conditions)
+    const offByOne = /for\s*\(?[^)]*<=\s*(?:len\s*\(|\.length\s*)/;
+    const simpleOffByOne = /for\s+\w+\s*:=\s*\d+\s*;\s*\w+\s*<=\s*(?:\w+|len\s*\()/;
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = lines[i].trim();
+      if (trimmed.startsWith('//') || trimmed.startsWith('#')) continue;
+      if (simpleOffByOne.test(trimmed) || offByOne.test(trimmed)) {
+        pushFinding(findings, 'warning', 'off-by-one', 'Off-by-one risk — using <= in loop condition may overrun bounds', i, 'Use < instead of <= for zero-indexed collections', path(lines, i, code));
+      }
+      if (/for\s*\(.*;\s*\w+\s*<=\s*\w+\.length\s*;/.test(trimmed)) {
+        pushFinding(findings, 'warning', 'off-by-one', 'Off-by-one risk — <= on array length', i, 'Use < instead of <=', path(lines, i, code));
+      }
+    }
+
+    // Self assignment
+    const selfAssignRe = /(\w+)\s*=\s*\1\s*$/;
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = lines[i].trim();
+      const m = trimmed.match(selfAssignRe);
+      if (m && !trimmed.startsWith('//') && !trimmed.startsWith('#') && !trimmed.includes('==')) {
+        pushFinding(findings, 'warning', 'self-assignment', `Self-assignment: ${m[0]} — no-op`, i, 'Remove the assignment or fix the variable name', path(lines, i, code));
+      }
+    }
+
+    // Infinite loops
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = lines[i].trim();
+      if ((trimmed === 'for {}' || trimmed === 'for{' || /for\s*\{/.test(trimmed) && /^\s*for\s*\{/.test(trimmed)) && lang === 'go') {
+        pushFinding(findings, 'error', 'infinite-loop', 'Infinite loop — for {} without body or break condition', i, 'Add a break condition or use for range', path(lines, i, code));
+      }
+      if (/while\s*True\s*:/.test(trimmed) || /while\s*true\s*\{/.test(trimmed) || /while\s*\(true\)/.test(trimmed)) {
+        if (!/break/.test(code)) {
+          pushFinding(findings, 'warning', 'infinite-loop', 'Infinite loop — while True without break', i, 'Ensure there is a break condition inside the loop', path(lines, i, code));
+        }
+      }
+      if (/for\s*\(\s*;;\s*\)/.test(trimmed)) {
+        pushFinding(findings, 'warning', 'infinite-loop', 'Infinite loop — for(;;) without break', i, 'Add a break condition', path(lines, i, code));
+      }
+    }
+
+    fill.style.width = '95%';
+
+    // --- STATIC ANALYSIS ---
+    const imports = [];
+    const importRe = /(?:import\s+\(([^)]*)\)|import\s+(?:\w+\s+)?["']([^"']+)["'])/g;
+    let m;
+    while ((m = importRe.exec(code)) !== null) {
+      if (m[1]) {
+        const lines2 = m[1].split('\n');
+        for (const l of lines2) {
+          const t = l.trim().replace(/^"|"$/g, '');
+          if (t && !t.startsWith('_')) imports.push(t);
+        }
+      } else if (m[2]) {
+        imports.push(m[2].replace(/^"|"$/g, ''));
+      }
+    }
+
+    const used = new Set();
+    // Find usage of import names
+    for (const imp of imports) {
+      const parts = imp.split('/');
+      const name = parts[parts.length - 1];
+      // Strip " from name
+      const clean = name.replace(/"/g, '');
+      // Check if import name appears outside import block
+      const re = new RegExp('\\b' + escapeRegex(clean) + '\\.');
+      if (re.test(code)) used.add(imp);
+      // Also check for direct usage
+      if (clean === 'fmt' || clean === 'os' || clean === 'strings' || clean === 'io' || clean === 'http') {
+        if (new RegExp('\\b' + escapeRegex(clean) + '\\.').test(code)) used.add(imp);
+      }
+      // Check for underscore blank import
+      if (/\b_\s+"/.test(code)) used.add(imp);
+    }
+
+    for (const imp of imports) {
+      const parts = imp.split('/');
+      const name = parts[parts.length - 1].replace(/"/g, '');
+      const stdlibSet = new Set(['fmt','os','strings','strconv','io','http','net','time','sync','encoding','json','errors','log','flag','math','sort','path','filepath','bytes','bufio','regexp','reflect','syscall','context','crypto','database','sql','runtime','unicode','compress','container','crypto/md5','crypto/sha256','crypto/sha512','crypto/aes','crypto/cipher','crypto/rand','encoding/json','encoding/base64','io/ioutil','net/http','os/exec','path/filepath','sync/atomic']);
+      if (stdlibSet.has(imp)) continue;
+      if (imp.startsWith('"') && imp.endsWith('"')) continue;
+      if (!used.has(imp) && !imp.startsWith('"')) {
+        pushFinding(findings, 'info', 'unused-import', `Unused import: ${imp}`, 0, 'Remove unused import to reduce clutter', path(lines, 0, code));
+      }
+    }
+
+    fill.style.width = '100%';
+
+    displayResults(findings, code, lang);
+    scanBtn.disabled = false;
+    setStatus('done', `Found ${findings.length} issue${findings.length !== 1 ? 's' : ''}`);
+  }, 200);
+}
+
+function pushFinding(arr, sev, rule, msg, line, suggestion, file) {
+  arr.push({ severity: sev, rule, message: msg, line: line + 1, suggestion, file });
+}
+
+function path(lines, idx, code) {
+  return 'playground';
+}
+
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function displayResults(findings, code, lang) {
+  const container = document.getElementById('results');
+  const summary = document.getElementById('summaryBar');
+
+  if (findings.length === 0) {
+    container.innerHTML = '<div class="empty-state"><div class="icon">&#10003;</div><p>No issues detected — clean code!</p></div>';
+    summary.style.display = 'none';
+    return;
+  }
+
+  const errors = findings.filter(f => f.severity === 'error');
+  const warnings = findings.filter(f => f.severity === 'warning');
+  const infos = findings.filter(f => f.severity === 'info');
+  const score = Math.max(0, 100 - (errors.length * 15 + warnings.length * 7 + infos.length * 3));
+
+  // Update summary
+  summary.style.display = 'flex';
+  document.getElementById('scoreValue').textContent = score;
+  document.getElementById('scoreValue').className = 'score ' + (score >= 70 ? 'high' : score >= 40 ? 'medium' : 'low');
+  document.getElementById('errCount').textContent = errors.length;
+  document.getElementById('warnCount').textContent = warnings.length;
+  document.getElementById('infoCount').textContent = infos.length;
+  document.getElementById('fileCount').textContent = 1;
+
+  // Render findings
+  let html = '';
+  for (const f of findings) {
+    const sevLabel = f.severity.charAt(0).toUpperCase() + f.severity.slice(1);
+    const lineInfo = f.line > 0 ? ` <span class="line-num">line ${f.line}</span>` : '';
+    const sug = f.suggestion ? `<div class="suggestion">Fix: ${f.suggestion}</div>` : '';
+    html += `<div class="result-item ${f.severity}">
+      <strong>${sevLabel}:</strong> ${f.message}${lineInfo}
+      <div class="msg">[${f.rule}]</div>
+      ${sug}
+    </div>`;
+  }
+  container.innerHTML = html;
+}
+
+function setStatus(state, text) {
+  const dot = document.getElementById('statusDot');
+  dot.className = state;
+  document.getElementById('status').innerHTML = `<span id="statusDot" class="${state}"></span>${text}`;
+}
+
+function loadDemo() {
+  // Cycle through languages each click
+  const editor = document.getElementById('codeEditor');
+  const current = editor.value;
+  if (current === DEMO_CODE) {
+    editor.value = DEMO_PYTHON;
+  } else if (current === DEMO_PYTHON) {
+    editor.value = DEMO_JS;
+  } else {
+    editor.value = DEMO_CODE;
+  }
+  editor.focus();
+  document.getElementById('results').innerHTML = '<div class="empty-state"><div class="icon">&#9000;</div><p>Demo loaded — click <strong>Scan</strong> to analyze</p></div>';
+  document.getElementById('summaryBar').style.display = 'none';
+  setStatus('idle', 'Ready');
+}
+</script>
+</body>
+</html>
