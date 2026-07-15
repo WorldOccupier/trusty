@@ -28,8 +28,10 @@ func Run(cfgPath string) *Result {
 
 	res.Checks = append(res.Checks, checkConfig(cfgPath))
 	res.Checks = append(res.Checks, checkGitRepo())
+	res.Checks = append(res.Checks, checkGitHooks())
 	res.Checks = append(res.Checks, checkLLMKey(cfgPath))
 	res.Checks = append(res.Checks, checkCacheFiles())
+	res.Checks = append(res.Checks, checkGitignore())
 
 	for _, c := range res.Checks {
 		if !c.Passed {
@@ -182,15 +184,47 @@ func checkLLMKey(cfgPath string) CheckResult {
 	}
 }
 
+func checkGitHooks() CheckResult {
+	gitDir := ".git"
+	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
+		return CheckResult{Name: "git-hooks", Passed: true, Message: "Not a git repository"}
+	}
+	hookPath := filepath.Join(gitDir, "hooks", "pre-commit")
+	if _, err := os.Stat(hookPath); os.IsNotExist(err) {
+		return CheckResult{Name: "git-hooks", Passed: true, Message: "No pre-commit hook installed (run: trusty install-hook)"}
+	}
+	data, _ := os.ReadFile(hookPath)
+	if strings.Contains(string(data), "trusty") {
+		return CheckResult{Name: "git-hooks", Passed: true, Message: "Trusty pre-commit hook installed"}
+	}
+	return CheckResult{Name: "git-hooks", Passed: true, Message: "Pre-commit hook exists (not Trusty)"}
+}
+
+func checkGitignore() CheckResult {
+	data, err := os.ReadFile(".gitignore")
+	if os.IsNotExist(err) {
+		return CheckResult{Name: "gitignore", Passed: true, Message: "No .gitignore file (recommended for cache files)"}
+	}
+	if err != nil {
+		return CheckResult{Name: "gitignore", Passed: false, Message: fmt.Sprintf("Cannot read .gitignore: %v", err)}
+	}
+	content := string(data)
+	missing := []string{}
+	for _, entry := range []string{".trusty-cache.json", ".trusty-history.json", ".trusty-audit.jsonl"} {
+		if !strings.Contains(content, entry) {
+			missing = append(missing, entry)
+		}
+	}
+	if len(missing) > 0 {
+		return CheckResult{Name: "gitignore", Passed: true, Message: fmt.Sprintf("Add to .gitignore: %s", strings.Join(missing, ", "))}
+	}
+	return CheckResult{Name: "gitignore", Passed: true, Message: "Trusty cache files are gitignored"}
+}
+
 func checkCacheFiles() CheckResult {
 	var issues []string
 
-	cacheFiles := []string{
-		".trusty-cache.json",
-		".trusty-history.json",
-		".trusty-audit.jsonl",
-	}
-
+	cacheFiles := []string{".trusty-cache.json", ".trusty-history.json", ".trusty-audit.jsonl"}
 	for _, name := range cacheFiles {
 		if _, err := os.Stat(name); os.IsNotExist(err) {
 			continue

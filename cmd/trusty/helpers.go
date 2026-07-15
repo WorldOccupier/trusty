@@ -42,6 +42,16 @@ func colorSeverity(s types.Severity) string {
 	}
 }
 
+func removeTier(tiers []int, t int) []int {
+	var out []int
+	for _, v := range tiers {
+		if v != t {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
 func colorScore(score int) string {
 	switch {
 	case score >= 90:

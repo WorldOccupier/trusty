@@ -52,12 +52,13 @@ type DiffFile struct {
 }
 
 type DiffOptions struct {
-	Staged  bool
-	From    string
-	To      string
-	Base    string
-	Head    string
-	Path    string
-	RawDiff string
-	ScanDir string
+	Staged    bool
+	From      string
+	To        string
+	Base      string
+	Head      string
+	Path      string
+	RawDiff   string
+	ScanDir   string
+	ScanPaths []string
 }

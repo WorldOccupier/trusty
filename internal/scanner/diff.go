@@ -21,6 +21,9 @@ func hasHEAD() bool {
 }
 
 func GetDiff(opts types.DiffOptions) ([]types.DiffFile, error) {
+	if len(opts.ScanPaths) > 0 {
+		return scanPaths(opts.ScanPaths)
+	}
 	if opts.ScanDir != "" {
 		return scanDirectory(opts.ScanDir)
 	}
@@ -90,6 +93,39 @@ func scanDirectory(dir string) ([]types.DiffFile, error) {
 	})
 
 	return files, err
+}
+
+func scanPaths(paths []string) ([]types.DiffFile, error) {
+	var files []types.DiffFile
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		if err != nil {
+			return nil, fmt.Errorf("accessing %s: %w", path, err)
+		}
+		if info.IsDir() {
+			dirFiles, err := scanDirectory(path)
+			if err != nil {
+				return nil, fmt.Errorf("scanning dir %s: %w", path, err)
+			}
+			files = append(files, dirFiles...)
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(path))
+		switch ext {
+		case ".go", ".py", ".js", ".ts", ".tsx", ".jsx", ".rs", ".java", ".rb", ".php", ".c", ".h", ".cpp", ".hpp", ".cc":
+			content, err := os.ReadFile(path)
+			if err != nil {
+				return nil, fmt.Errorf("reading %s: %w", path, err)
+			}
+			files = append(files, types.DiffFile{
+				Path:     path,
+				Content:  string(content),
+				Diff:     fmt.Sprintf("--- a/%s\n+++ b/%s\n@@ -1 +1 @@\n+file scanned", path, path),
+				Language: detectLanguage(path),
+			})
+		}
+	}
+	return files, nil
 }
 
 func ParseDiffContent(raw string) ([]types.DiffFile, error) {

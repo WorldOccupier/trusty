@@ -31,7 +31,7 @@ jobs:
             if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
             out="trusty-$GOOS-$GOARCH$ext"
             echo "Building $out..."
-            GOOS=$GOOS GOARCH=$GOARCH CGO_ENABLED=0 go build -o "dist/$out" ./cmd/trusty/
+            GOOS=$GOOS GOARCH=$GOARCH CGO_ENABLED=0 go build -o "dist/$out" -ldflags="-s -w -X main.version=${GITHUB_REF_NAME#v}" ./cmd/trusty/
             sha256sum "dist/$out" > "dist/$out.sha256"
           done
 

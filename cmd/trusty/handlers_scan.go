@@ -142,6 +142,8 @@ func runScan(cmd *cobra.Command, args []string) error {
 			BaseURL:     cfg.LLM.BaseURL,
 		}
 		llmProvider = llm.NewProvider(cfg.LLM.Provider, llmCfg)
+	} else {
+		cfg.Scan.Tiers = removeTier(cfg.Scan.Tiers, 2)
 	}
 
 	s := scanner.NewScanner(cfg, llmProvider)
@@ -166,12 +168,13 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 
 	diffOpts := types.DiffOptions{
-		Staged:  staged,
-		From:    from,
-		To:      to,
-		Base:    base,
-		Head:    head,
-		ScanDir: scanDir,
+		Staged:    staged,
+		From:      from,
+		To:        to,
+		Base:      base,
+		Head:      head,
+		ScanDir:   scanDir,
+		ScanPaths: args,
 	}
 
 	if diffFile != "" {
@@ -258,10 +261,12 @@ func runScan(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	fmt.Fprintf(os.Stderr, "Trust score: %s | Files: %d | Issues: %d (%d err, %d warn, %d info)\n",
-		colorScore(result.TrustScore), result.Summary.FilesScanned,
-		result.Summary.TotalIssues, result.Summary.Errors,
-		result.Summary.Warnings, result.Summary.Info)
+	if !quiet {
+		fmt.Fprintf(os.Stderr, "Trust score: %s | Files: %d | Issues: %d (%d err, %d warn, %d info)\n",
+			colorScore(result.TrustScore), result.Summary.FilesScanned,
+			result.Summary.TotalIssues, result.Summary.Errors,
+			result.Summary.Warnings, result.Summary.Info)
+	}
 
 	if result.Summary.TotalIssues > 0 {
 		return fmt.Errorf("found %d issue(s) — trust score %d/100",

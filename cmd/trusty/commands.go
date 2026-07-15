@@ -19,7 +19,9 @@ Examples:
   trusty scan --from HEAD~3 --to HEAD  # Scan commit range
   trusty scan --base main --head feat  # Scan branch diff
   trusty scan --format sarif           # Output SARIF format`,
-		RunE: runScan,
+		RunE:            runScan,
+		SilenceUsage:    true,
+		SilenceErrors:   true,
 	}
 
 	scanCmd.Flags().BoolVarP(&staged, "staged", "s", false, "Scan staged changes only")
@@ -37,6 +39,7 @@ Examples:
 	scanCmd.Flags().StringVar(&policyFile, "policy-file", "", "Path to team policy YAML overlay")
 	scanCmd.Flags().StringVar(&policyURL, "policy-url", "", "URL to team policy YAML overlay")
 	scanCmd.Flags().StringVar(&scanDir, "dir", "", "Scan a directory instead of git diff")
+	scanCmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "Suppress summary output")
 
 	halluCmd := &cobra.Command{
 		Use:   "hallu",
@@ -46,7 +49,9 @@ Examples:
 Examples:
   trusty hallu                           # Check staged changes
   trusty hallu --from HEAD~1 --to HEAD   # Check specific commits`,
-		RunE: runHallu,
+		RunE:            runHallu,
+		SilenceUsage:    true,
+		SilenceErrors:   true,
 	}
 
 	halluCmd.Flags().BoolVarP(&staged, "staged", "s", false, "Check staged changes only")
@@ -75,19 +80,15 @@ Examples:
 	securityCmd := &cobra.Command{
 		Use:   "security",
 		Short: "Scan for security vulnerabilities in code changes",
-		Long: `Detect security vulnerabilities in code changes including:
-  - SQL injection
-  - Cross-site scripting (XSS)
-  - Hardcoded secrets (API keys, tokens, passwords)
-  - Command injection
-  - Path traversal
-  - Insecure cryptography
+		Long: `Detect SQL injection, XSS, hardcoded secrets, command injection, and more.
 
 Examples:
   trusty security                          # Scan for vulnerabilities
   trusty security --staged                 # Scan staged changes
   trusty security --from HEAD~1 --to HEAD  # Check specific commits`,
-		RunE: runSecurity,
+		RunE:            runSecurity,
+		SilenceUsage:    true,
+		SilenceErrors:   true,
 	}
 	securityCmd.Flags().BoolVarP(&staged, "staged", "s", false, "Scan staged changes only")
 	securityCmd.Flags().StringVar(&from, "from", "", "Start commit")
@@ -98,19 +99,15 @@ Examples:
 	logicCmd := &cobra.Command{
 		Use:   "logic",
 		Short: "Detect logic errors in code changes",
-		Long: `Detect logic errors in code changes including:
-  - Off-by-one errors in loops
-  - Inverted conditionals
-  - Self-assignments
-  - Missing switch defaults
-  - Infinite loops
-  - Edge case omissions
+		Long: `Detect off-by-one, inverted conditionals, self-assignments, infinite loops, and more.
 
 Examples:
   trusty logic                           # Detect logic errors
   trusty logic --staged                  # Check staged changes
   trusty logic --from HEAD~1 --to HEAD   # Check specific commits`,
-		RunE: runLogic,
+		RunE:            runLogic,
+		SilenceUsage:    true,
+		SilenceErrors:   true,
 	}
 	logicCmd.Flags().BoolVarP(&staged, "staged", "s", false, "Scan staged changes only")
 	logicCmd.Flags().StringVar(&from, "from", "", "Start commit")

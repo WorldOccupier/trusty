@@ -8,7 +8,11 @@ import (
 )
 
 func init() {
-	root.Version = upgrade.CurrentVersion()
+	v := version
+	if v == "" {
+		v = upgrade.CurrentVersion()
+	}
+	root.Version = v
 	versionCmd := &cobra.Command{
 		Use:   "version",
 		Short: "Print the version number",

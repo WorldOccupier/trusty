@@ -10,6 +10,11 @@ PROFILE_DIR:= ./profiles
 build:
 	go build -o $(BIN_NAME) $(CMD_DIR)
 
+build-release:
+	go build -o $(BIN_NAME) -ldflags="-s -w -X main.version=$(VERSION)" $(CMD_DIR)
+	@echo "Built $(BIN_NAME) (stripped, $(VERSION))"
+	@ls -lh $(BIN_NAME)
+
 build-time:
 	@echo "=== Build Timing ==="
 	@/usr/bin/time go build -o $(BIN_NAME) $(CMD_DIR) 2>&1

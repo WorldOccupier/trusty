@@ -29,6 +29,8 @@ var (
 	policyFile      string
 	policyURL       string
 	scanDir         string
+	quiet           bool
+	version         string
 
 	root = &cobra.Command{
 		Use:   "trusty",
