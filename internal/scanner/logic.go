@@ -31,6 +31,8 @@ func (d *LogicDetector) Detect(files []types.DiffFile) []types.Finding {
 		case "java":
 			findings = append(findings, d.detectJava(file.Content, file.Path)...)
 			findings = append(findings, d.checkJavaInfiniteLoops(file.Content, file.Path)...)
+		case "rust":
+			findings = append(findings, d.detectRust(file.Content, file.Path)...)
 		}
 		for i := range findings {
 			if findings[i].Category == "" {

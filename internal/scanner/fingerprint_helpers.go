@@ -23,6 +23,8 @@ func isFunctionDecl(line, lang string) bool {
 	case "java":
 		return (strings.HasPrefix(line, "public ") || strings.HasPrefix(line, "private ") || strings.HasPrefix(line, "protected ")) &&
 			(strings.Contains(line, "(") && (strings.Contains(line, "{") || strings.Contains(line, ";")))
+	case "rust":
+		return strings.HasPrefix(line, "fn ") || strings.HasPrefix(line, "pub fn ") || strings.HasPrefix(line, "pub unsafe fn ")
 	default:
 		return strings.HasPrefix(line, "func ") || strings.HasPrefix(line, "def ") || strings.HasPrefix(line, "function ")
 	}
@@ -61,13 +63,15 @@ func isImportStart(line, lang string) bool {
 		return strings.HasPrefix(line, "import ") || strings.HasPrefix(line, "const ") && strings.Contains(line, "require(")
 	case "java":
 		return strings.HasPrefix(line, "import ") && strings.Contains(line, ";")
+	case "rust":
+		return strings.HasPrefix(line, "use ") && strings.Contains(line, ";") || strings.HasPrefix(line, "extern crate ")
 	default:
 		return false
 	}
 }
 
 func isImportEnd(line, lang string) bool {
-	return line == ")" || lang == "java"
+	return line == ")" || lang == "java" || lang == "rust"
 }
 
 func extractImportPath(line, lang string) string {
@@ -102,6 +106,12 @@ func extractImportPath(line, lang string) string {
 		line = strings.TrimPrefix(line, "import ")
 		line = strings.TrimSuffix(line, ";")
 		return strings.TrimSpace(line)
+	case "rust":
+		line = strings.TrimSpace(line)
+		line = strings.TrimPrefix(line, "use ")
+		line = strings.TrimPrefix(line, "extern crate ")
+		line = strings.TrimSuffix(line, ";")
+		return strings.TrimSpace(line)
 	}
 	return ""
 }
@@ -115,6 +125,8 @@ func isStdLibImport(imp, lang string) bool {
 		return stdLibs[strings.Split(imp, ".")[0]]
 	case "java":
 		return strings.HasPrefix(imp, "java.") || strings.HasPrefix(imp, "javax.") || strings.HasPrefix(imp, "jakarta.")
+	case "rust":
+		return strings.HasPrefix(imp, "std") || strings.HasPrefix(imp, "core") || strings.HasPrefix(imp, "alloc") || strings.HasPrefix(imp, "proc_macro")
 	default:
 		return false
 	}
@@ -131,6 +143,8 @@ func isErrorHandling(line, lang string) bool {
 		return strings.Contains(lower, "try ") || strings.Contains(lower, "catch(") || strings.Contains(lower, "catch (") || strings.Contains(lower, "throw ") || strings.Contains(lower, ".catch(") || strings.Contains(lower, "reject(")
 	case "java":
 		return strings.Contains(lower, "try ") || strings.Contains(lower, "catch(") || strings.Contains(lower, "catch (") || strings.Contains(lower, "throws ") || strings.Contains(lower, "throw new ") || strings.Contains(lower, "finally ") || strings.Contains(lower, "exception")
+	case "rust":
+		return strings.Contains(lower, "result") || strings.Contains(lower, "ok(") || strings.Contains(lower, "err(") || strings.Contains(lower, "unwrap(") || strings.Contains(lower, "expect(") || strings.Contains(lower, "?") || strings.Contains(lower, "panic!") || strings.Contains(lower, "unwrap_or") || strings.Contains(lower, "map_err") || strings.Contains(lower, "and_then") || strings.Contains(lower, "or_else")
 	}
 	return false
 }

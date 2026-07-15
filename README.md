@@ -54,7 +54,7 @@ trusty init --interactive
 |---------|--------|
 | 3-tier scan engine (static + LLM + behavioral) | ✅ |
 | Trust score (0-100) | ✅ |
-| Multi-language (Go, Python, JS/TS, Java) | ✅ |
+| Multi-language (Go, Python, JS/TS, Java, Rust) | ✅ |
 | Security vulnerability scanning | ✅ |
 | Logic error detection | ✅ |
 | Hallucinated import detection | ✅ |

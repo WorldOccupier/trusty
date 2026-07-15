@@ -35,6 +35,8 @@ func (d *Detector) Detect(path, content, diff string) []types.Finding {
 		return d.detectJavaScript(content)
 	case "java":
 		return d.detectJava(content)
+	case "rust":
+		return d.detectRust(content)
 	default:
 		return nil
 	}
@@ -163,6 +165,8 @@ func detectLanguageFromPath(path string) string {
 		return "typescript"
 	case ".java":
 		return "java"
+	case ".rs":
+		return "rust"
 	default:
 		return "unknown"
 	}
@@ -192,6 +196,57 @@ func (d *Detector) detectJava(content string) []types.Finding {
 				Severity:   types.SeverityError,
 				Message:    fmt.Sprintf("Java package %q may not exist — verify Maven/Gradle dependency", moduleName),
 				Suggestion: fmt.Sprintf("Verify %q is declared in pom.xml or build.gradle", moduleName),
+				Category:   "hallucination",
+			})
+		}
+	}
+
+	return findings
+}
+
+func (d *Detector) detectRust(content string) []types.Finding {
+	var findings []types.Finding
+
+	importRe := regexp.MustCompile(`(?:use\s+(\S+(?:::\S+)*)|extern\s+crate\s+(\S+))`)
+	matches := importRe.FindAllStringSubmatch(content, -1)
+
+	wellKnownRust := map[string]bool{
+		"std": true, "core": true, "alloc": true, "proc_macro": true,
+		"serde": true, "serde_json": true, "tokio": true, "actix_web": true,
+		"axum": true, "rocket": true, "warp": true, "regex": true,
+		"rand": true, "chrono": true, "clap": true, "anyhow": true,
+		"thiserror": true, "reqwest": true, "hyper": true, "tower": true,
+		"tracing": true, "log": true, "env_logger": true,
+		"futures": true, "async_trait": true, "lazy_static": true,
+		"once_cell": true, "itertools": true, "rayon": true,
+	}
+
+	for _, m := range matches {
+		crateName := m[1]
+		if crateName == "" {
+			crateName = m[2]
+		}
+		if crateName == "" {
+			continue
+		}
+
+		parts := strings.SplitN(crateName, "::", 2)
+		rootCrate := parts[0]
+
+		if rootCrate == "" || rootCrate == "crate" || rootCrate == "self" || rootCrate == "super" {
+			continue
+		}
+
+		if wellKnownRust[rootCrate] {
+			continue
+		}
+
+		if strings.Count(rootCrate, "_") > 0 || strings.ToLower(rootCrate) == rootCrate {
+			findings = append(findings, types.Finding{
+				Rule:       "hallucinated-import",
+				Severity:   types.SeverityError,
+				Message:    fmt.Sprintf("Crate %q may not exist — verify Cargo.toml dependency", rootCrate),
+				Suggestion: fmt.Sprintf("Verify %q is declared in Cargo.toml under [dependencies]", rootCrate),
 				Category:   "hallucination",
 			})
 		}

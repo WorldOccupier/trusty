@@ -74,6 +74,8 @@ func detectFingerprintLanguage(path string) string {
 		return "javascript"
 	case strings.HasSuffix(path, ".java"):
 		return "java"
+	case strings.HasSuffix(path, ".rs"):
+		return "rust"
 	default:
 		return "unknown"
 	}

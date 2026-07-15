@@ -28,6 +28,8 @@ func (s *SecurityScanner) Scan(files []types.DiffFile) []types.Finding {
 			findings = append(findings, s.scanJavaScript(file.Content, file.Path)...)
 		case "java":
 			findings = append(findings, s.scanJava(file.Content, file.Path)...)
+		case "rust":
+			findings = append(findings, s.scanRust(file.Content, file.Path)...)
 		}
 		for i := range findings {
 			if findings[i].Category == "" {
