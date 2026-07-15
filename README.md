@@ -108,6 +108,8 @@ trusty init --interactive
 
 ## Why Trusty?
 
+[![codecov](https://codecov.io/gh/WorldOccupier/trusty/graph/badge.svg?token=TRUSTY_TOKEN)](https://codecov.io/gh/WorldOccupier/trusty)
+
 - **AI-generated code has 1.7x more issues** than human code (Stanford/MIT 2026)
 - **1.75x more logic errors**, **1.57x more security findings**
 - **67% of devs spend extra time debugging AI code** that's "almost right"

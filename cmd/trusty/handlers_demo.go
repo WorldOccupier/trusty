@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/WorldOccupier/trusty/internal/fixer"
 	"github.com/WorldOccupier/trusty/internal/scanner"
 	"github.com/WorldOccupier/trusty/internal/types"
 	"github.com/spf13/cobra"
@@ -199,6 +200,30 @@ func runDemo(_ *cobra.Command, _ []string) error {
 		}
 		fmt.Println()
 	}
+
+	// Also demonstrate fix suggestions
+	fmt.Println("\n=== Fix Suggestions ===")
+	fixr := fixer.New()
+	fixr.DryRun = true
+	fixResults, _ := fixr.ApplyFindings(allFindings, tmpDir)
+	for _, fr := range fixResults {
+		if fr.Fix != "" && fr.Fix != "No auto-fix available" {
+			fmt.Printf("  %s:%d — %s\n", fr.File, fr.Line, fr.Fix)
+		}
+	}
+
+	// Guide to explain
+	fmt.Println("\n=== Explain Rules ===")
+	shown := make(map[string]bool)
+	for _, f := range allFindings {
+		if !shown[f.Rule] {
+			fmt.Printf("  trusty explain %s\n", f.Rule)
+			shown[f.Rule] = true
+		}
+	}
+
+	fmt.Println("\nTip: Run 'trusty fix results.json --dry-run' on real scan results to preview fixes.")
+	fmt.Println("Tip: Run 'trusty explain <rule>' to learn more about any finding rule.")
 
 	fmt.Println("\nThis demo ran static analysis, security, and logic checks.")
 	fmt.Println("For LLM-based analysis, set OPENAI_API_KEY and run:")

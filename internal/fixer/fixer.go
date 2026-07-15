@@ -184,6 +184,28 @@ func generateFix(finding types.Finding) string {
 		return "Return explicit typed nil instead of bare nil"
 	case "hardcoded-index":
 		return "Add length check or use range loop"
+	case "sql-injection":
+		return "Use parameterized queries: db.Query(\"SELECT * FROM users WHERE id = ?\", userID)"
+	case "command-injection":
+		return "Sanitize input: use allowlist validation on user input before shell execution"
+	case "xss-inner-html":
+		return "Use textContent instead of innerHTML: element.textContent = sanitizedInput"
+	case "xss-document-write":
+		return "Avoid document.write(); use DOM manipulation methods"
+	case "hardcoded-secret":
+		return "Move secret to environment variable: os.Getenv(\"SECRET_NAME\")"
+	case "insecure-crypto":
+		return "Replace with secure algorithm: crypto/sha256 or bcrypt"
+	case "insecure-random":
+		return "Use crypto/rand instead of math/rand"
+	case "dangerous-eval":
+		return "Replace eval() with JSON.parse() or Function constructor"
+	case "unused-import":
+		return "Remove unused import"
+	case "wildcard-import":
+		return "Replace wildcard import with explicit imports"
+	case "any-type":
+		return "Replace 'any' with specific type or 'unknown'"
 	default:
 		return ""
 	}

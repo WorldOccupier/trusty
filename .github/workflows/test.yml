@@ -1,0 +1,38 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        go: ['1.24']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          cache: true
+      - name: Build
+        run: go build ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test ./... -count=1
+      - name: Test with race
+        run: go test ./... -race -count=1
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+            token: ${{ secrets.CODECOV_TOKEN }}
+            file: ./coverage.out
+            fail_ci_if_error: false
