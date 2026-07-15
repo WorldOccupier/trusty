@@ -21,9 +21,10 @@ func runSecurity(cmd *cobra.Command, args []string) error {
 	}
 
 	diffOpts := types.DiffOptions{
-		Staged: staged,
-		From:   from,
-		To:     to,
+		Staged:  staged,
+		From:    from,
+		To:      to,
+		ScanDir: scanDir,
 	}
 
 	files, err := scanner.GetDiff(diffOpts)
@@ -55,7 +56,7 @@ func runSecurity(cmd *cobra.Command, args []string) error {
 
 	for _, f := range findings {
 		if f.Severity == types.SeverityError || f.Severity == types.SeverityWarning {
-			fmt.Fprintf(os.Stderr, "[%s] %s:%d %s\n", severityStr(f.Severity), f.Category, f.Line, f.Message)
+			fmt.Fprintf(os.Stderr, "[%s] %s:%d %s\n", colorSeverity(f.Severity), f.Category, f.Line, f.Message)
 		}
 	}
 
@@ -73,9 +74,10 @@ func runLogic(cmd *cobra.Command, args []string) error {
 	}
 
 	diffOpts := types.DiffOptions{
-		Staged: staged,
-		From:   from,
-		To:     to,
+		Staged:  staged,
+		From:    from,
+		To:      to,
+		ScanDir: scanDir,
 	}
 
 	files, err := scanner.GetDiff(diffOpts)
@@ -107,7 +109,7 @@ func runLogic(cmd *cobra.Command, args []string) error {
 
 	for _, f := range findings {
 		if f.Severity == types.SeverityError || f.Severity == types.SeverityWarning {
-			fmt.Fprintf(os.Stderr, "[%s] %s:%d %s\n", severityStr(f.Severity), f.Category, f.Line, f.Message)
+			fmt.Fprintf(os.Stderr, "[%s] %s:%d %s\n", colorSeverity(f.Severity), f.Category, f.Line, f.Message)
 		}
 	}
 
@@ -164,11 +166,12 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 
 	diffOpts := types.DiffOptions{
-		Staged: staged,
-		From:   from,
-		To:     to,
-		Base:   base,
-		Head:   head,
+		Staged:  staged,
+		From:    from,
+		To:      to,
+		Base:    base,
+		Head:    head,
+		ScanDir: scanDir,
 	}
 
 	if diffFile != "" {
@@ -255,6 +258,11 @@ func runScan(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	fmt.Fprintf(os.Stderr, "Trust score: %s | Files: %d | Issues: %d (%d err, %d warn, %d info)\n",
+		colorScore(result.TrustScore), result.Summary.FilesScanned,
+		result.Summary.TotalIssues, result.Summary.Errors,
+		result.Summary.Warnings, result.Summary.Info)
+
 	if result.Summary.TotalIssues > 0 {
 		return fmt.Errorf("found %d issue(s) — trust score %d/100",
 			result.Summary.TotalIssues, result.TrustScore)
@@ -271,9 +279,10 @@ func runHallu(cmd *cobra.Command, args []string) error {
 
 	s := scanner.NewScanner(cfg, nil)
 	diffOpts := types.DiffOptions{
-		Staged: staged,
-		From:   from,
-		To:     to,
+		Staged:  staged,
+		From:    from,
+		To:      to,
+		ScanDir: scanDir,
 	}
 
 	result, err := s.Scan(context.Background(), diffOpts)
@@ -334,9 +343,10 @@ func runReport(cmd *cobra.Command, args []string) error {
 	}
 
 	diffOpts := types.DiffOptions{
-		Staged: staged,
-		From:   from,
-		To:     to,
+		Staged:  staged,
+		From:    from,
+		To:      to,
+		ScanDir: scanDir,
 	}
 
 	s := scanner.NewScanner(cfg, nil)

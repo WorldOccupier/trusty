@@ -59,4 +59,5 @@ type DiffOptions struct {
 	Head    string
 	Path    string
 	RawDiff string
+	ScanDir string
 }

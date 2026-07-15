@@ -28,6 +28,7 @@ var (
 	allPackages     bool
 	policyFile      string
 	policyURL       string
+	scanDir         string
 
 	root = &cobra.Command{
 		Use:   "trusty",

@@ -21,6 +21,9 @@ func hasHEAD() bool {
 }
 
 func GetDiff(opts types.DiffOptions) ([]types.DiffFile, error) {
+	if opts.ScanDir != "" {
+		return scanDirectory(opts.ScanDir)
+	}
 	if !isGitRepo() {
 		return scanDirectory(".")
 	}

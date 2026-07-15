@@ -26,26 +26,74 @@ trusty logic
 # AI-code fingerprinting
 trusty fingerprint --all
 
+# Run a demo with sample AI-generated code issues
+trusty demo
+
 # Scan with LLM analysis (requires API key)
 export OPENAI_API_KEY="sk-..."
 trusty scan --format sarif --min-score 80
 
-# Generate default config
-trusty init
+# Interactive config setup
+trusty init --interactive
 ```
 
 ## Features
 
-- **3-tier scan engine**: Static analysis (ms), LLM semantic (s), behavioral verification (s-min)
-- **Trust score**: Quantitative 0-100 score — auto-merge safe (90+), full review (< 50)
-- **Security scanning**: SQL injection, XSS, hardcoded secrets, insecure crypto
-- **Logic error detection**: Off-by-one, inverted conditionals, wrong variable usage
-- **Hallucination detection**: Fake imports, non-existent APIs for Go/npm/PyPI
-- **AI-code fingerprinting**: Statistical detection with 8 weighted signals
-- **Auto-fix**: Apply fix suggestions directly to source files
-- **30 CLI commands**: Scan, report, watch, TUI, CI integrations, and more
-- **CI/CD ready**: GitHub Actions, GitLab CI, Jenkins, CircleCI auto-detection
-- **Enterprise**: Audit trail, SBOM, policy-as-code, SSO, Helm chart, Slack/Jira integrations
+### Core Scanning
+| Feature | Status |
+|---------|--------|
+| 3-tier scan engine (static + LLM + behavioral) | ✅ |
+| Trust score (0-100) | ✅ |
+| Multi-language (Go, Python, JS/TS) | ✅ |
+| Security vulnerability scanning | ✅ |
+| Logic error detection | ✅ |
+| Hallucinated import detection | ✅ |
+| AI-code fingerprinting (8 signals) | ✅ |
+| Intent verification via LLM | ✅ |
+| Test contract generation | ✅ |
+| Fuzz testing | ✅ |
+
+### CLI & UX
+| Feature | Status |
+|---------|--------|
+| 30 CLI commands | ✅ |
+| SARIF / JSON / HTML output | ✅ |
+| Watch mode (fsnotify) | ✅ |
+| TUI for browsing findings | ✅ |
+| Shell completions | ✅ |
+| `trusty demo` — sample project with known issues | ✅ |
+| `trusty explain` — detailed finding explanations | ✅ |
+| `trusty init --interactive` — guided setup | ✅ |
+| VS Code extension | ✅ |
+| VS Code auto-scan on save | ✅ |
+
+### Integrations
+| Feature | Status |
+|---------|--------|
+| GitHub Actions (composite action) | ✅ |
+| GitLab CI (`.gitlab-ci.yml`) | ✅ |
+| GitHub PR commenting | ✅ |
+| GitLab MR commenting | ✅ |
+| Slack webhook notifications | ✅ |
+| Jira ticket creation | ✅ |
+| CI auto-detection (GitHub/GitLab/Jenkins/CircleCI) | ✅ |
+
+### Enterprise
+| Feature | Status |
+|---------|--------|
+| Audit trail (append-only JSONL) | ✅ |
+| CycloneDX SBOM generation | ✅ |
+| Policy-as-code (YAML DSL + OPA) | ✅ |
+| Self-contained HTML dashboard | ✅ |
+| SSO/SAML middleware | ✅ |
+| Auto-fix suggestions | ✅ |
+| Scan comparison / diff | ✅ |
+| Self-update (`trusty upgrade`) | ✅ |
+| Pre-commit hooks | ✅ |
+| Auto-merge gate | ✅ |
+| Live web server (SSE + REST API) | ✅ |
+| Helm chart | ✅ |
+| Docker multi-stage build | ✅ |
 
 ## Documentation
 
@@ -56,6 +104,7 @@ trusty init
 | Development setup, refactoring, Makefile | [docs/development.md](docs/development.md) |
 | `.trusty.yml` config reference | [docs/configuration.md](docs/configuration.md) |
 | GitHub Actions, GitLab CI integration | [docs/ci-integration.md](docs/ci-integration.md) |
+| Feature plan and roadmap | [docs/roadmap.md](docs/roadmap.md) |
 
 ## Why Trusty?
 

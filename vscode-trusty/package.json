@@ -44,6 +44,11 @@
           "type": "string",
           "default": "trusty",
           "description": "Path to trusty CLI binary"
+        },
+        "trusty.scanOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Auto-scan files on save"
         }
       }
     }

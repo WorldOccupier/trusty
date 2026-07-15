@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -19,6 +20,10 @@ import (
 	"github.com/WorldOccupier/trusty/internal/validate"
 )
 func runInit(cmd *cobra.Command, args []string) error {
+	interactive, _ := cmd.Flags().GetBool("interactive")
+	if interactive {
+		return runInitInteractive()
+	}
 	for _, name := range []string{".trusty.yml", ".trusty.yaml"} {
 		if _, err := os.Stat(name); err == nil {
 			return fmt.Errorf("%s already exists", name)
@@ -56,6 +61,82 @@ output:
 	}
 	fmt.Println("Created .trusty.yml")
 	return nil
+}
+
+func runInitInteractive() error {
+	reader := bufio.NewReader(os.Stdin)
+
+	fmt.Println("Trusty Interactive Setup")
+	fmt.Println("========================")
+
+	provider := prompt(reader, "LLM provider", "openai, anthropic, ollama", "openai")
+	model := prompt(reader, "Model", "gpt-4o, claude-3-opus, codellama", "gpt-4o")
+	minScore := prompt(reader, "Min trust score", "0-100", "70")
+	installHook := prompt(reader, "Install pre-commit hook", "y/n", "n")
+
+	var langs []string
+	langInput := prompt(reader, "Languages", "comma-separated (go,python,typescript)", "go,python,typescript")
+	for _, l := range strings.Split(langInput, ",") {
+		langs = append(langs, strings.TrimSpace(l))
+	}
+
+	def := fmt.Sprintf(`# Trusty Configuration
+version: 1
+
+scan:
+  min_score: %s
+  languages:
+%s
+
+llm:
+  provider: %s
+  model: %s
+  temperature: 0.1
+  # api_key: set via OPENAI_API_KEY or ANTHROPIC_API_KEY
+
+rules:
+  hallucination:
+    severity: error
+  logic_errors:
+    severity: warning
+  security:
+    severity: error
+
+output:
+  format: pretty
+`, minScore, formatLangList(langs), provider, model)
+
+	if err := os.WriteFile(".trusty.yml", []byte(def), 0644); err != nil {
+		return fmt.Errorf("writing .trusty.yml: %w", err)
+	}
+	fmt.Println("\nCreated .trusty.yml with your settings.")
+
+	if strings.ToLower(installHook) == "y" || strings.ToLower(installHook) == "yes" {
+		if err := hook.Install(".", hook.PreCommit, false); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to install hook: %v\n", err)
+		} else {
+			fmt.Println("Installed pre-commit hook.")
+		}
+	}
+	return nil
+}
+
+func prompt(reader *bufio.Reader, field, hint, def string) string {
+	fmt.Printf("%s [%s] (%s): ", field, def, hint)
+	input, _ := reader.ReadString('\n')
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return def
+	}
+	return input
+}
+
+func formatLangList(langs []string) string {
+	var b strings.Builder
+	for _, l := range langs {
+		b.WriteString(fmt.Sprintf("    - %s\n", l))
+	}
+	return strings.TrimSuffix(b.String(), "\n")
 }
 
 func runWatch(cmd *cobra.Command, args []string) error {

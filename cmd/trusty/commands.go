@@ -12,11 +12,10 @@ func initCommands(root *cobra.Command) {
 
 Tier 1: Static analysis — AST parsing, import validation, pattern matching
 Tier 2: LLM semantic analysis — detects hallucinated APIs, logic errors
-Tier 3: Behavioral verification — function signature & error handling checks
+Tier 3: Behavioral — signature & error handling checks
 
 Examples:
   trusty scan                          # Scan staged changes
-  trusty scan --staged                 # Scan staged changes
   trusty scan --from HEAD~3 --to HEAD  # Scan commit range
   trusty scan --base main --head feat  # Scan branch diff
   trusty scan --format sarif           # Output SARIF format`,
@@ -37,6 +36,7 @@ Examples:
 	scanCmd.Flags().BoolVar(&allPackages, "all-packages", false, "Scan all Go modules in workspace")
 	scanCmd.Flags().StringVar(&policyFile, "policy-file", "", "Path to team policy YAML overlay")
 	scanCmd.Flags().StringVar(&policyURL, "policy-url", "", "URL to team policy YAML overlay")
+	scanCmd.Flags().StringVar(&scanDir, "dir", "", "Scan a directory instead of git diff")
 
 	halluCmd := &cobra.Command{
 		Use:   "hallu",
@@ -174,13 +174,14 @@ Examples:
 	initCmd := &cobra.Command{
 		Use:   "init",
 		Short: "Scaffold a .trusty.yml config file",
-		Long: `Generate a default .trusty.yml configuration file in the current directory.
-Will not overwrite an existing config file.
+		Long: `Scaffold a .trusty.yml file (won't overwrite existing).
 
 Examples:
-  trusty init`,
+  trusty init
+  trusty init --interactive`,
 		RunE: runInit,
 	}
+	initCmd.Flags().Bool("interactive", false, "Interactive configuration prompts")
 
 	fingerprintCmd := &cobra.Command{
 		Use:   "fingerprint",

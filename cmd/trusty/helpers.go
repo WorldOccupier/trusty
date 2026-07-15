@@ -5,10 +5,53 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/WorldOccupier/trusty/internal/config"
 	"github.com/WorldOccupier/trusty/internal/types"
 )
+
+var useColor = runtime.GOOS != "windows" && os.Getenv("NO_COLOR") == ""
+
+const (
+	colorRed    = "\033[31m"
+	colorYellow = "\033[33m"
+	colorCyan   = "\033[36m"
+	colorGreen  = "\033[32m"
+	colorBold   = "\033[1m"
+	colorReset  = "\033[0m"
+)
+
+func colorize(c, s string) string {
+	if !useColor {
+		return s
+	}
+	return c + s + colorReset
+}
+
+func colorSeverity(s types.Severity) string {
+	switch s {
+	case types.SeverityError:
+		return colorize(colorRed, "ERROR")
+	case types.SeverityWarning:
+		return colorize(colorYellow, "WARN")
+	case types.SeverityInfo:
+		return colorize(colorCyan, "INFO")
+	default:
+		return "UNKNOWN"
+	}
+}
+
+func colorScore(score int) string {
+	switch {
+	case score >= 90:
+		return colorize(colorGreen, fmt.Sprintf("%d/100", score))
+	case score >= 70:
+		return colorize(colorYellow, fmt.Sprintf("%d/100", score))
+	default:
+		return colorize(colorRed, fmt.Sprintf("%d/100", score))
+	}
+}
 
 func severityStr(s types.Severity) string {
 	switch s {
